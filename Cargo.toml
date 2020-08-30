@@ -1,0 +1,19 @@
+[package]
+name = "diskomap"
+version = "0.1.0"
+authors = ["Alex Astakhov <madmonkey@mail.ru>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = "1.0.114"
+serde_json = "1.0.56"
+threadpool = "1.7.1"
+fs2 = "0.4.3"
+tempfile = "3.1.0"
+
+[dev-dependencies]
+serde = { version = "1.0.56", features = ["derive"] }
+rand = "0.7.3"
+num_cpus = "1"
