@@ -24,7 +24,8 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
                 }
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
 
@@ -35,8 +36,8 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
         match self.inner.map.read() {
             Ok(map) => map.len(),
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
-                0
+                dbg!(err);
+                unreachable!();
             }
         }
     }
@@ -61,7 +62,7 @@ where
                     keys.remove(&btree_key);
                 }
                 None => {
-                    dbg!("unreachable code");
+                    unreachable!();
                 }
             }
         }
