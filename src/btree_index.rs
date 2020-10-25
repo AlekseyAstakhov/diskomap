@@ -24,18 +24,13 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
         Ok(vec)
     }
 
-    pub fn len(&self) -> usize {
-        match self.inner.map.read() {
-            Ok(map) => map.len(),
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
+    pub fn len(&self) -> Result<usize, BtreeIndexError> {
+        Ok(self.inner.map.read()?.len())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+
+    pub fn is_empty(&self) -> Result<bool, BtreeIndexError> {
+        Ok(self.len()? == 0)
     }
 }
 
