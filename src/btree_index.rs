@@ -44,13 +44,8 @@ where
         let mut map = self.inner.map.write()?;
         if let Some(old_value) = old_value {
             let old_value_index_key = self.inner.make_index_key_callback.read()?(&old_value);
-            match map.get_mut(&old_value_index_key) {
-                Some(keys) => {
-                    keys.remove(&btree_key);
-                }
-                None => {
-                    unreachable!();
-                }
+            if let Some(keys) = map.get_mut(&old_value_index_key) {
+                keys.remove(&btree_key);
             }
         }
 
