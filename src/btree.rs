@@ -144,11 +144,8 @@ where
     }
 
     /// Returns `true` if the map in memory contains a value for the specified key.
-    pub fn contains_key(&self, key: &Key) -> bool {
-        match self.inner.map.read() {
-            Ok(map) => map.contains_key(key),
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
+    pub fn contains_key(&self, key: &Key) -> Result<bool, BTreeError> {
+        Ok(self.inner.map.read()?.contains_key(key))
     }
 
     /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
@@ -182,19 +179,11 @@ where
     }
 
     /// Returns cloned keys of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_keys<R>(&self, range: R) -> Vec<Key>
+    pub fn range_keys<R>(&self, range: R) -> Result<Vec<Key>, BTreeError>
     where
         R: std::ops::RangeBounds<Key>,
     {
-        match self.inner.map.read() {
-            Ok(map) => {
-                map.range(range).map(|(key, _)| key.clone()).collect()
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
+        Ok(self.inner.map.read()?.range(range).map(|(key, _)| key.clone()).collect())
     }
 
     /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
@@ -228,19 +217,13 @@ where
     }
 
     /// Returns the number of elements in the map. No writing to the operations log file.
-    pub fn len(&self) -> usize {
-        match self.inner.map.read() {
-            Ok(map) => map.len(),
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
+    pub fn len(&self) -> Result<usize, BTreeError> {
+        Ok(self.inner.map.read()?.len())
     }
 
     /// Returns `true` if the map contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub fn is_empty(&self) -> Result<bool, BTreeError> {
+        Ok(self.len()? == 0)
     }
 
     // Load from file and process all operations and make actual map.
@@ -406,42 +389,31 @@ where
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
-    pub fn create_btree_index<IndexKey, F>(&self, make_index_key_callback: F) -> BtreeIndex<IndexKey, Key, Value>
+    pub fn create_btree_index<IndexKey, F>(&self, make_index_key_callback: F)
+        -> Result<BtreeIndex<IndexKey, Key, Value>, BtreeIndexError>
     where
         IndexKey: Clone + Ord + Send + Sync + 'static,
         F: Fn(&Value) -> IndexKey + Send + Sync + 'static,
     {
         let mut index_map: BTreeMap<IndexKey, BTreeSet<Key>> = BTreeMap::new();
 
-        match self.inner.map.read() {
-            Ok(map) => {
-                for (key, val_rw) in map.iter() {
-                    match val_rw.read() {
-                        Ok(val) => {
-                            let index_key = make_index_key_callback(&val);
-                            match index_map.get_mut(&index_key) {
-                                Some(keys) => {
-                                    keys.insert(key.clone());
-                                }
-                                None => {
-                                    let mut set = BTreeSet::new();
-                                    set.insert(key.clone());
-                                    index_map.insert(index_key, set);
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            dbg!(err);
-                            unreachable!();
-                        }
+        { // lock
+            let map = self.inner.map.read()?;
+            for (key, val_rw) in map.iter() {
+                let val = val_rw.read()?;
+                let index_key = make_index_key_callback(&val);
+                match index_map.get_mut(&index_key) {
+                    Some(keys) => {
+                        keys.insert(key.clone());
+                    }
+                    None => {
+                        let mut set = BTreeSet::new();
+                        set.insert(key.clone());
+                        index_map.insert(index_key, set);
                     }
                 }
             }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
+        } // unlock
 
         let index = BtreeIndex {
             inner: Arc::new(crate::btree_index::Inner {
@@ -450,49 +422,32 @@ where
             }),
         };
 
-        match self.inner.indexes.write() {
-            Ok(mut indexes) => indexes.push(Box::new(index.clone())),
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
-        index
+        self.inner.indexes.write()?.push(Box::new(index.clone()));
+
+        Ok(index)
     }
 
     /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
-    pub fn keys(&self) -> Vec<Key> {
-        match self.inner.map.read() {
-            Ok(map) => {
-                map.keys().cloned().collect()
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
+    pub fn keys(&self) -> Result<Vec<Key>, BTreeError> {
+        Ok(self.inner.map.read()?.keys().cloned().collect())
     }
 
     /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
-    pub fn values(&self) -> Vec<Value> {
+    pub fn values(&self) -> Result<Vec<Value>, BTreeError> {
         let mut values = vec![];
-        match self.inner.map.read() {
-            Ok(map) => {
-                let map_values = map.values();
-                for val_rw in map_values {
-                    match val_rw.read() {
-                        Ok(val) => values.push(val.clone()),
-                        Err(err) => {
-                            dbg!(err);
-                            unreachable!();
-                        }
-                    }
+        let map = self.inner.map.read()?;
+        let map_values = map.values();
+        for val_rw in map_values {
+            match val_rw.read() {
+                Ok(val) => values.push(val.clone()),
+                Err(err) => {
+                    dbg!(err);
+                    unreachable!();
                 }
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
             }
         }
 
-        values
+        Ok(values)
     }
 }
 
@@ -601,14 +556,14 @@ mod tests {
             let map = BTree::open_or_create(&log_file)?;
             assert_eq!(Some(()), map.get(&())?);
             map.insert((), ())?;
-            assert_eq!(1, map.len());
+            assert_eq!(1, map.len()?);
             map.insert((), ())?;
-            assert_eq!(1, map.len());
+            assert_eq!(1, map.len()?);
             map.insert((), ())?;
-            assert_eq!(1, map.len());
+            assert_eq!(1, map.len()?);
             assert_eq!(Some(()), map.get(&())?);
             map.remove(&())?;
-            assert_eq!(0, map.len());
+            assert_eq!(0, map.len()?);
         }
 
         // new log file
@@ -620,7 +575,7 @@ mod tests {
             map.insert("key 3".to_string(), 3)?;
             map.insert("key 4".to_string(), 4)?;
             map.insert("key 5".to_string(), 5)?;
-            assert_eq!(5, map.len());
+            assert_eq!(5, map.len()?);
             assert_eq!(Some(3), map.get(&"key 3".to_string())?);
             map.remove(&"key 1".to_string())?;
             map.remove(&"key 4".to_string())?;
@@ -628,15 +583,15 @@ mod tests {
             map.insert("key 1".to_string(), 100)?;
             map.remove(&"key 2".to_string())?;
             map.insert("key 7".to_string(), 7)?;
-            assert_eq!(map.keys(), vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.values(), vec![100, 3, 5, 6, 7]);
+            assert_eq!(map.keys()?, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            assert_eq!(map.values()?, vec![100, 3, 5, 6, 7]);
             assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string()))), vec![3, 5, 6]);
-            assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string()))), vec!["key 3".to_string(), "key 5".to_string()]);
+            assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string())))?, vec!["key 3".to_string(), "key 5".to_string()]);
         }
         // after restart
         {
             let map = BTree::open_or_create(&log_file)?;
-            assert_eq!(5, map.len());
+            assert_eq!(5, map.len()?);
             assert_eq!(Some(100), map.get(&"key 1".to_string())?);
             assert_eq!(None, map.get(&"key 4".to_string())?);
             assert_eq!(None, map.get(&"key 2".to_string())?);
@@ -647,11 +602,11 @@ mod tests {
         // after restart
         {
             let map = BTree::open_or_create(&log_file)?;
-            assert_eq!(4, map.len());
+            assert_eq!(4, map.len()?);
             assert_eq!(Some(33), map.get(&"key 3".to_string())?);
             assert_eq!(None, map.get(&"key 1".to_string())?);
-            assert_eq!(map.keys(), vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.values(), vec![33, 5, 6, 7]);
+            assert_eq!(map.keys()?, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            assert_eq!(map.values()?, vec![33, 5, 6, 7]);
             assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string()))), vec![("key 5".to_string(), 5)]);
         }
 

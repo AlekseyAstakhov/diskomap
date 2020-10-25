@@ -116,7 +116,7 @@ mod tests {
         // new log file
         let log_file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
         let map = crate::BTree::open_or_create(&log_file)?;
-        let user_name_index = map.create_btree_index(|value: &User| value.name.clone());
+        let user_name_index = map.create_btree_index(|value: &User| value.name.clone())?;
 
         map.insert(0, User { name: "Mary".to_string(), age: 21 })?;
         map.insert(1, User { name: "John".to_string(), age: 37 })?;

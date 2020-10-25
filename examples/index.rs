@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let user_name_index = users.create_btree_index(|user: &User|
         user.name.clone()
-    );
+    )?;
 
     users.insert(0, User { name: "Masha".to_string(), age: 23 })?;
     users.insert(3, User { name: "Sasha".to_string(), age: 31 })?;
@@ -21,13 +21,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Users with Natasha name:");
     for user_id in user_name_index.get(&"Natasha".to_string())? {
-        let user = users.get(&user_id).unwrap();
+        let user = users.get(&user_id)?;
         println!("{:?}", &user);
     }
 
     let age_index = users.create_btree_index(|user: &User|
         user.age - user.age % 30
-    );
+    )?;
 
     println!("Users 30 - 40 ages:");
     for user_id in age_index.get(&30)? {
