@@ -189,44 +189,6 @@ where
         }
     }
 
-    /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
-    pub fn keys(&self) -> Vec<Key> {
-        let mut keys = vec![];
-        match self.inner.map.read() {
-            Ok(map) => {
-                keys = map.keys().cloned().collect();
-            }
-            Err(err) => {
-                dbg!(format!("unreachable code {}", err));
-            }
-        }
-
-        keys
-    }
-
-    /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
-    pub fn values(&self) -> Vec<Value> {
-        let mut values = vec![];
-        match self.inner.map.read() {
-            Ok(map) => {
-                let map_values = map.values();
-                for val_rw in map_values {
-                    match val_rw.read() {
-                        Ok(val) => values.push(val.clone()),
-                        Err(err) => {
-                            dbg!(format!("unreachable code {}", err));
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                dbg!(format!("unreachable code {}", err));
-            }
-        }
-
-        values
-    }
-
     /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
     pub fn range<R>(&self, range: R) -> Vec<(Key, Value)>
     where
@@ -526,6 +488,44 @@ where
             Err(err) => { dbg!(format!("unreachable code {}", err)); }
         }
         index
+    }
+
+    /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
+    pub fn keys(&self) -> Vec<Key> {
+        let mut keys = vec![];
+        match self.inner.map.read() {
+            Ok(map) => {
+                keys = map.keys().cloned().collect();
+            }
+            Err(err) => {
+                dbg!(format!("unreachable code {}", err));
+            }
+        }
+
+        keys
+    }
+
+    /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
+    pub fn values(&self) -> Vec<Value> {
+        let mut values = vec![];
+        match self.inner.map.read() {
+            Ok(map) => {
+                let map_values = map.values();
+                for val_rw in map_values {
+                    match val_rw.read() {
+                        Ok(val) => values.push(val.clone()),
+                        Err(err) => {
+                            dbg!(format!("unreachable code {}", err));
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                dbg!(format!("unreachable code {}", err));
+            }
+        }
+
+        values
     }
 }
 
