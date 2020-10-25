@@ -149,33 +149,18 @@ where
     }
 
     /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range<R>(&self, range: R) -> Vec<(Key, Value)>
+    pub fn range<R>(&self, range: R) -> Result<Vec<(Key, Value)>, BTreeError>
     where
         R: std::ops::RangeBounds<Key>,
     {
         let mut key_values = vec![];
-        match self.inner.map.read() {
-            Ok(map) => {
-                let range = map.range(range);
-                for (key, val_rw) in range {
-                    match val_rw.read() {
-                        Ok(val) => {
-                            key_values.push((key.clone(), val.clone()))
-                        }
-                        Err(err) => {
-                            dbg!(err);
-                            unreachable!();
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
+        let map = self.inner.map.read()?;
+        let range = map.range(range);
+        for (key, val) in range {
+            key_values.push((key.clone(), val.read()?.clone()))
         }
 
-        key_values
+        Ok(key_values)
     }
 
     /// Returns cloned keys of sub-range of elements in the map. No writing to the operations log file.
@@ -187,33 +172,18 @@ where
     }
 
     /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_values<R>(&self, range: R) -> Vec<Value>
+    pub fn range_values<R>(&self, range: R) -> Result<Vec<Value>, BTreeError>
     where
         R: std::ops::RangeBounds<Key>,
     {
         let mut values = vec![];
-        match self.inner.map.read() {
-            Ok(map) => {
-                let range = map.range(range);
-                for (_, val_rw) in range {
-                    match val_rw.read() {
-                        Ok(val) => {
-                            values.push(val.clone())
-                        }
-                        Err(err) => {
-                            dbg!(err);
-                            unreachable!();
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
+        let map = self.inner.map.read()?;
+        let range = map.range(range);
+        for (_, val) in range {
+            values.push(val.read()?.clone())
         }
 
-        values
+        Ok(values)
     }
 
     /// Returns the number of elements in the map. No writing to the operations log file.
@@ -436,15 +406,8 @@ where
     pub fn values(&self) -> Result<Vec<Value>, BTreeError> {
         let mut values = vec![];
         let map = self.inner.map.read()?;
-        let map_values = map.values();
-        for val_rw in map_values {
-            match val_rw.read() {
-                Ok(val) => values.push(val.clone()),
-                Err(err) => {
-                    dbg!(err);
-                    unreachable!();
-                }
-            }
+        for val in map.values() {
+            values.push(val.read()?.clone());
         }
 
         Ok(values)
@@ -585,7 +548,7 @@ mod tests {
             map.insert("key 7".to_string(), 7)?;
             assert_eq!(map.keys()?, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.values()?, vec![100, 3, 5, 6, 7]);
-            assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string()))), vec![3, 5, 6]);
+            assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string())))?, vec![3, 5, 6]);
             assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string())))?, vec!["key 3".to_string(), "key 5".to_string()]);
         }
         // after restart
@@ -607,7 +570,7 @@ mod tests {
             assert_eq!(None, map.get(&"key 1".to_string())?);
             assert_eq!(map.keys()?, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.values()?, vec![33, 5, 6, 7]);
-            assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string()))), vec![("key 5".to_string(), 5)]);
+            assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string())))?, vec![("key 5".to_string(), 5)]);
         }
 
         Ok(())
