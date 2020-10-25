@@ -1,5 +1,5 @@
 use crate::btree_index::BtreeIndex;
-use crate::btree_index::IndexError;
+use crate::btree_index::BtreeIndexError;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -46,7 +46,7 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(operations_log_file: &str) -> Result<Self, Error> {
+    pub fn open_or_create(operations_log_file: &str) -> Result<Self, BTreeError> {
         create_dirs_to_path_if_not_exist(operations_log_file)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(operations_log_file)?;
@@ -76,7 +76,7 @@ where
     }
 
     /// Insert value to the map in memory and asynchronously append operation to the file.
-    pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, Error> {
+    pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
         let key_val_json = serde_json::to_string(&(&key, &value))?;
 
         let updated_value = match self.inner.map.read()?.get(&key) {
@@ -116,7 +116,7 @@ where
     }
 
     /// Get value by key from the map in memory. No writing to the operations log file.
-    pub fn get(&self, key: &Key) -> Result<Option<Value>, Error> {
+    pub fn get(&self, key: &Key) -> Result<Option<Value>, BTreeError> {
         let map = self.inner.map.read()?;
         if let Some(val_rw) = map.get(key) {
             return Ok(Some(val_rw.read()?.clone()));
@@ -126,7 +126,7 @@ where
     }
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
-    pub fn remove(&self, key: &Key) -> Result<Option<Value>, Error> {
+    pub fn remove(&self, key: &Key) -> Result<Option<Value>, BTreeError> {
         if let Some(old_value) = self.inner.map.write()?.remove(&key) {
             let value = old_value.read()?;
 
@@ -244,7 +244,7 @@ where
     }
 
     // Load from file and process all operations and make actual map.
-    pub fn load_from_file(file: &mut File) -> Result<BTreeMap<Key, RwLock<Value>>, Error> {
+    pub fn load_from_file(file: &mut File) -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError> {
         let mut map = BTreeMap::new();
         let mut reader = BufReader::new(file);
         let mut line = String::with_capacity(150);
@@ -252,7 +252,7 @@ where
         while reader.read_line(&mut line)? > 0 {
             const MIN_LINE_LEN: usize = 4;
             if line.len() < MIN_LINE_LEN {
-                return Err(Error::FileLineLengthLessThenMinimum { line_num });
+                return Err(BTreeError::FileLineLengthLessThenMinimum { line_num });
             }
 
             match &line[..3] {
@@ -261,7 +261,7 @@ where
                         map.insert(key, RwLock::new(val));
                     }
                     Err(err) => {
-                        return Err(Error::DeserializeJsonError { err, line_num });
+                        return Err(BTreeError::DeserializeJsonError { err, line_num });
                     }
                 },
                 "rem" => match serde_json::from_str(&line[4..]) {
@@ -269,11 +269,11 @@ where
                         map.remove(&key);
                     }
                     Err(err) => {
-                        return Err(Error::DeserializeJsonError { err, line_num });
+                        return Err(BTreeError::DeserializeJsonError { err, line_num });
                     }
                 },
                 _ => {
-                    return Err(Error::NoLineDefinition { line_num });
+                    return Err(BTreeError::NoLineDefinition { line_num });
                 }
             }
 
@@ -290,7 +290,7 @@ where
     /// All current data state will be presented as 'set' records.
     /// Locks 'Self::map' with shared read access while processing.
     /// If data is big it's take some time because writes all contents to a file.
-    pub fn remove_history(&self) -> Result<(), Error> {
+    pub fn remove_history(&self) -> Result<(), BTreeError> {
         let map = self.inner.map.read()?;
         let tempdir = tempdir()?;
         let tmp_file_path = tempdir.path().join(self.inner.log_file_path.deref()).to_str().unwrap_or("").to_string();
@@ -319,7 +319,7 @@ where
         log_file.lock_exclusive()?;
 
         if let Err(err) = reaname_res {
-            return Err(Error::FileError(err));
+            return Err(BTreeError::FileError(err));
         }
 
         Ok(())
@@ -339,7 +339,7 @@ where
 
     /// Write "insert" operation to the operations log file in background thread.
     /// Calling need blocking map. Under blocking only set task to the background thread.
-    fn write_insert_to_log_file_async(&self, key_val_json: String) -> Result<(), Error> {
+    fn write_insert_to_log_file_async(&self, key_val_json: String) -> Result<(), BTreeError> {
         let file = self.inner.log_file.clone();
         let error_callback = self.inner.on_background_error.clone();
 
@@ -363,7 +363,7 @@ where
 
     /// Write "remove" operation to the operations log file in background thread.
     /// Calling need blocking map. Under blocking only set task to the background thread.
-    fn write_remove_to_log_file_async(&self, key_json: String) -> Result<(), Error> {
+    fn write_remove_to_log_file_async(&self, key_json: String) -> Result<(), BTreeError> {
         let file = self.inner.log_file.clone();
         let error_hook = self.inner.on_background_error.clone();
         self.inner.thread_pool.lock()?.execute(move || {
@@ -513,7 +513,7 @@ impl<Key, Value> Drop for BTree<Key, Value> {
 
 /// Error of operations log file.
 #[derive(Debug)]
-pub enum Error {
+pub enum BTreeError {
     /// Error of working with file.
     FileError(std::io::Error),
     /// Json error with line number in operations log file.
@@ -529,45 +529,45 @@ pub enum Error {
     IndexError,
 }
 
-impl From<std::io::Error> for Error {
+impl From<std::io::Error> for BTreeError {
     fn from(err: std::io::Error) -> Self {
-        Error::FileError(err)
+        BTreeError::FileError(err)
     }
 }
 
-impl From<serde_json::error::Error> for Error {
+impl From<serde_json::error::Error> for BTreeError {
     fn from(err: serde_json::error::Error) -> Self {
-        Error::JsonSerializeError(err)
+        BTreeError::JsonSerializeError(err)
     }
 }
 
 // For op-?, "auto" type conversion.
-impl<T> From<std::sync::PoisonError<T>> for Error {
+impl<T> From<std::sync::PoisonError<T>> for BTreeError {
     fn from(_: std::sync::PoisonError<T>) -> Self {
-        Error::PoisonError
+        BTreeError::PoisonError
     }
 }
 
-impl From<IndexError> for Error {
-    fn from(_: IndexError) -> Self {
-        Error::IndexError
+impl From<BtreeIndexError> for BTreeError {
+    fn from(_: BtreeIndexError) -> Self {
+        BTreeError::IndexError
     }
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for BTreeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for BTreeError {}
 
 /// Custom index. 'BTree' contains this dyn traits and use when insert or delete elements for update indexes.
 pub(crate) trait IndexTrait<BTreeKey, BTreeValue> {
     /// Updates index when insert or update operation on 'BTree'.
-    fn on_insert(&self, key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), IndexError>;
+    fn on_insert(&self, key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError>;
     /// Updates index when remove operation on 'BTree'.
-    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), IndexError>;
+    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError>;
 }
 
 // create dirs to path if not exist

@@ -14,22 +14,14 @@ pub struct Inner<IndexKey: Ord, BTreeKey, BTreeValue> {
 
 impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, BTreeValue> {
     /// BTreeMap keys by custom index. Empty vec if no so index.
-    pub fn get(&self, key: &IndexKey) -> Vec<BTreeKey> {
+    pub fn get(&self, key: &IndexKey) -> Result<Vec<BTreeKey>, BtreeIndexError> {
         let mut vec = vec![];
-
-        match self.inner.map.read() {
-            Ok(map) => {
-                if let Some(btree_keys) = map.get(key) {
-                    vec = (*btree_keys).iter().cloned().collect();
-                }
-            }
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
+        let map = self.inner.map.read()?;
+        if let Some(btree_keys) = map.get(key) {
+            vec = (*btree_keys).iter().cloned().collect();
         }
 
-        vec
+        Ok(vec)
     }
 
     pub fn len(&self) -> usize {
@@ -53,7 +45,7 @@ where
     BTreeKey: Ord,
 {
     /// Updates index when insert operation on 'BTree'.
-    fn on_insert(&self, btree_key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), IndexError> {
+    fn on_insert(&self, btree_key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError> {
         let mut map = self.inner.map.write()?;
         if let Some(old_value) = old_value {
             let old_value_index_key = self.inner.make_index_key_callback.read()?(&old_value);
@@ -83,7 +75,7 @@ where
     }
 
     /// Updates index when remove operation on 'BTree'.
-    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), IndexError> {
+    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError> {
         let index_key = self.inner.make_index_key_callback.read()?(&value);
         if let Some(keys) = self.inner.map.write()?.get_mut(&index_key) {
             keys.remove(key);
@@ -94,16 +86,24 @@ where
 }
 
 #[derive(Debug)]
-pub enum IndexError {
+pub enum BtreeIndexError {
     PoisonError,
 }
 
 // For op-?, "auto" type conversion.
-impl<T> From<std::sync::PoisonError<T>> for IndexError {
+impl<T> From<std::sync::PoisonError<T>> for BtreeIndexError {
     fn from(_: std::sync::PoisonError<T>) -> Self {
-        IndexError::PoisonError
+        BtreeIndexError::PoisonError
     }
 }
+
+impl std::fmt::Display for BtreeIndexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for BtreeIndexError {}
 
 #[cfg(test)]
 mod tests {
@@ -126,30 +126,30 @@ mod tests {
         map.insert(0, User { name: "Mary".to_string(), age: 21 })?;
         map.insert(1, User { name: "John".to_string(), age: 37 })?;
 
-        assert_eq!(user_name_index.get(&"John".to_string()), vec![1]);
-        assert!(user_name_index.get(&"Masha".to_string()).is_empty());
+        assert_eq!(user_name_index.get(&"John".to_string())?, vec![1]);
+        assert!(user_name_index.get(&"Masha".to_string())?.is_empty());
 
         map.insert(3, User { name: "Masha".to_string(), age: 27 })?;
         map.insert(0, User { name: "Natasha".to_string(), age: 23 })?;
 
-        assert_eq!(user_name_index.get(&"Natasha".to_string()), vec![0]);
-        assert!(user_name_index.get(&"Mary".to_string()).is_empty());
-        assert_eq!(user_name_index.get(&"Masha".to_string()), vec![3]);
+        assert_eq!(user_name_index.get(&"Natasha".to_string())?, vec![0]);
+        assert!(user_name_index.get(&"Mary".to_string())?.is_empty());
+        assert_eq!(user_name_index.get(&"Masha".to_string())?, vec![3]);
         map.insert(5, User { name: "Natasha".to_string(), age: 25 })?;
 
         map.insert(1, User { name: "Bob".to_string(), age: 27 })?;
-        assert!(user_name_index.get(&"John".to_string()).is_empty());
+        assert!(user_name_index.get(&"John".to_string())?.is_empty());
 
         map.remove(&1)?;
-        assert!(user_name_index.get(&"Bob".to_string()).is_empty());
+        assert!(user_name_index.get(&"Bob".to_string())?.is_empty());
 
         map.insert(8, User { name: "Masha".to_string(), age: 23 })?;
         map.insert(12, User { name: "Masha".to_string(), age: 24 })?;
-        assert_eq!(user_name_index.get(&"Masha".to_string()), vec![3, 8, 12]);
+        assert_eq!(user_name_index.get(&"Masha".to_string())?, vec![3, 8, 12]);
 
         map.insert(8, User { name: "Natasha".to_string(), age: 35 })?;
-        assert_eq!(user_name_index.get(&"Masha".to_string()), vec![3, 12]);
-        assert_eq!(user_name_index.get(&"Natasha".to_string()), vec![0, 5, 8]);
+        assert_eq!(user_name_index.get(&"Masha".to_string())?, vec![3, 12]);
+        assert_eq!(user_name_index.get(&"Natasha".to_string())?, vec![0, 5, 8]);
 
         Ok(())
     }

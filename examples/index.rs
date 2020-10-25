@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     users.insert(12, User { name: "Natasha".to_string(), age: 33 })?;
 
     println!("Users with Natasha name:");
-    for user_id in user_name_index.get(&"Natasha".to_string()) {
+    for user_id in user_name_index.get(&"Natasha".to_string())? {
         let user = users.get(&user_id).unwrap();
         println!("{:?}", &user);
     }
@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("Users 30 - 40 ages:");
-    for user_id in age_index.get(&30) {
+    for user_id in age_index.get(&30)? {
         let user = users.get(&user_id).unwrap();
         println!("{:?}", &user);
     }
