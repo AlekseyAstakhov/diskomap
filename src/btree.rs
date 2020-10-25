@@ -80,8 +80,8 @@ where
         match self.insert_with_result(key, value) {
             Ok(opt_val) => opt_val,
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
-                None
+                dbg!(err);
+                unreachable!();
             }
         }
     }
@@ -134,7 +134,7 @@ where
     pub fn get(&self, key: &Key) -> Option<Value> {
         match self.get_with_result(key) {
             Ok(opt_val) => opt_val,
-            Err(err) => { dbg!(format!("unreachable code {}", err)); None }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
     }
 
@@ -155,7 +155,7 @@ where
     pub fn remove(&self, key: &Key) -> Option<Value> {
         match self.remove_with_result(key) {
             Ok(old) => old,
-            Err(err) => { dbg!(format!("unreachable code {}", err)); None }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
     }
 
@@ -185,7 +185,7 @@ where
     pub fn contains_key(&self, key: &Key) -> bool {
         match self.inner.map.read() {
             Ok(map) => map.contains_key(key),
-            Err(err) => { dbg!(format!("unreachable code {}", err)); false }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
     }
 
@@ -204,13 +204,15 @@ where
                             key_values.push((key.clone(), val.clone()))
                         }
                         Err(err) => {
-                            dbg!(format!("unreachable code {}", err));
+                            dbg!(err);
+                            unreachable!();
                         }
                     }
                 }
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
 
@@ -222,17 +224,15 @@ where
     where
         R: std::ops::RangeBounds<Key>,
     {
-        let mut values = vec![];
         match self.inner.map.read() {
             Ok(map) => {
-                values = map.range(range).map(|(key, _)| key.clone()).collect();
+                map.range(range).map(|(key, _)| key.clone()).collect()
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
-
-        values
     }
 
     /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
@@ -250,13 +250,15 @@ where
                             values.push(val.clone())
                         }
                         Err(err) => {
-                            dbg!(format!("unreachable code {}", err));
+                            dbg!(err);
+                            unreachable!();
                         }
                     }
                 }
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
 
@@ -268,9 +270,8 @@ where
         match self.inner.map.read() {
             Ok(map) => map.len(),
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
-                0
-            }
+                dbg!(err);
+                unreachable!();            }
         }
     }
 
@@ -369,7 +370,7 @@ where
                 None => None,
             };
         } else {
-            dbg!("unreachable code");
+            unreachable!();
         }
     }
 
@@ -384,8 +385,8 @@ where
             let res = match file.lock() {
                 Ok(mut file) => file.write_all(user_line.as_bytes()),
                 Err(err) => {
-                    dbg!(format!("unreachable code {}", err));
-                    return;
+                    dbg!(err);
+                    unreachable!();
                 }
             };
 
@@ -406,7 +407,7 @@ where
             let user_line = "rem ".to_string() + &key_json + "\n";
             let res = match file.lock() {
                 Ok(mut file) => file.write_all(user_line.as_bytes()),
-                Err(err) => { dbg!(format!("unreachable code {}", err)); return; }
+                Err(err) => { dbg!(err); unreachable!(); }
             };
 
             if let Err(err) = res {
@@ -432,7 +433,8 @@ where
                 }
             },
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
     }
@@ -466,13 +468,15 @@ where
                             }
                         }
                         Err(err) => {
-                            dbg!(format!("unreachable code {}", err));
+                            dbg!(err);
+                            unreachable!();
                         }
                     }
                 }
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
 
@@ -485,24 +489,22 @@ where
 
         match self.inner.indexes.write() {
             Ok(mut indexes) => indexes.push(Box::new(index.clone())),
-            Err(err) => { dbg!(format!("unreachable code {}", err)); }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
         index
     }
 
     /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
     pub fn keys(&self) -> Vec<Key> {
-        let mut keys = vec![];
         match self.inner.map.read() {
             Ok(map) => {
-                keys = map.keys().cloned().collect();
+                map.keys().cloned().collect()
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
-
-        keys
     }
 
     /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
@@ -515,13 +517,15 @@ where
                     match val_rw.read() {
                         Ok(val) => values.push(val.clone()),
                         Err(err) => {
-                            dbg!(format!("unreachable code {}", err));
+                            dbg!(err);
+                            unreachable!();
                         }
                     }
                 }
             }
             Err(err) => {
-                dbg!(format!("unreachable code {}", err));
+                dbg!(err);
+                unreachable!();
             }
         }
 
@@ -534,12 +538,12 @@ impl<Key, Value> Drop for BTree<Key, Value> {
     fn drop(&mut self) {
         match self.inner.thread_pool.lock() {
             Ok(thread_pool) => { thread_pool.join(); }
-            Err(err) => { dbg!(format!("unreachable code {}", err)); }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
 
         match self.inner.log_file.lock() {
             Ok(file) => file.unlock().unwrap_or_else(|err| { dbg!(err); }),
-            Err(err) => { dbg!(format!("unreachable code {}", err)); }
+            Err(err) => { dbg!(err); unreachable!(); }
         }
     }
 }
