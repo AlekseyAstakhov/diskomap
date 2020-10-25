@@ -13,11 +13,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         user.name.clone()
     );
 
-    users.insert(0, User { name: "Masha".to_string(), age: 23 });
-    users.insert(3, User { name: "Sasha".to_string(), age: 31 });
-    users.insert(5, User { name: "Pasha".to_string(), age: 33 });
-    users.insert(17, User { name: "Natasha".to_string(), age: 19 });
-    users.insert(12, User { name: "Natasha".to_string(), age: 33 });
+    users.insert(0, User { name: "Masha".to_string(), age: 23 })?;
+    users.insert(3, User { name: "Sasha".to_string(), age: 31 })?;
+    users.insert(5, User { name: "Pasha".to_string(), age: 33 })?;
+    users.insert(17, User { name: "Natasha".to_string(), age: 19 })?;
+    users.insert(12, User { name: "Natasha".to_string(), age: 33 })?;
 
     println!("Users with Natasha name:");
     for user_id in user_name_index.get(&"Natasha".to_string()) {

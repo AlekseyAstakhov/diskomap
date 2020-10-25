@@ -76,22 +76,7 @@ where
     }
 
     /// Insert value to the map in memory and asynchronously append operation to the file.
-    pub fn insert(&self, key: Key, value: Value) -> Option<Value> {
-        match self.insert_with_result(key, value) {
-            Ok(opt_val) => opt_val,
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
-    }
-
-    /// Insert value to the map in memory and asynchronously append operation to the file.
-    ///
-    /// # Errors
-    ///
-    /// If Json serialize error or RwLock is poisoned but it's will unreachable.
-    fn insert_with_result(&self, key: Key, value: Value) -> Result<Option<Value>, Error> {
+    pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, Error> {
         let key_val_json = serde_json::to_string(&(&key, &value))?;
 
         let updated_value = match self.inner.map.read()?.get(&key) {
@@ -131,18 +116,7 @@ where
     }
 
     /// Get value by key from the map in memory. No writing to the operations log file.
-    pub fn get(&self, key: &Key) -> Option<Value> {
-        match self.get_with_result(key) {
-            Ok(opt_val) => opt_val,
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
-    }
-
-    /// Get value by key from the map in memory. No writing to the operations log file.
-    /// # Errors
-    ///
-    /// If RwLock is poisoned but it's will unreachable.
-    fn get_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
+    pub fn get(&self, key: &Key) -> Result<Option<Value>, Error> {
         let map = self.inner.map.read()?;
         if let Some(val_rw) = map.get(key) {
             return Ok(Some(val_rw.read()?.clone()));
@@ -152,19 +126,7 @@ where
     }
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
-    pub fn remove(&self, key: &Key) -> Option<Value> {
-        match self.remove_with_result(key) {
-            Ok(old) => old,
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
-    }
-
-    /// Remove value by key from the map in memory and asynchronously append operation to the file.
-    ///
-    /// # Errors
-    ///
-    /// If Json serialize error or RwLock is poisoned but it's will unreachable.
-    fn remove_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
+    pub fn remove(&self, key: &Key) -> Result<Option<Value>, Error> {
         if let Some(old_value) = self.inner.map.write()?.remove(&key) {
             let value = old_value.read()?;
 
@@ -271,7 +233,8 @@ where
             Ok(map) => map.len(),
             Err(err) => {
                 dbg!(err);
-                unreachable!();            }
+                unreachable!();
+            }
         }
     }
 
@@ -631,20 +594,20 @@ mod tests {
         let log_file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
         {
             let map = BTree::open_or_create(&log_file)?;
-            map.insert((), ());
+            map.insert((), ())?;
         }
         // after restart
         {
             let map = BTree::open_or_create(&log_file)?;
-            assert_eq!(Some(()), map.get(&()));
-            map.insert((), ());
+            assert_eq!(Some(()), map.get(&())?);
+            map.insert((), ())?;
             assert_eq!(1, map.len());
-            map.insert((), ());
+            map.insert((), ())?;
             assert_eq!(1, map.len());
-            map.insert((), ());
+            map.insert((), ())?;
             assert_eq!(1, map.len());
-            assert_eq!(Some(()), map.get(&()));
-            map.remove(&());
+            assert_eq!(Some(()), map.get(&())?);
+            map.remove(&())?;
             assert_eq!(0, map.len());
         }
 
@@ -652,19 +615,19 @@ mod tests {
         let log_file = tempdir()?.path().join("test2.txt").to_str().unwrap().to_string();
         {
             let map = BTree::open_or_create(&log_file)?;
-            map.insert("key 1".to_string(), 1);
-            map.insert("key 2".to_string(), 2);
-            map.insert("key 3".to_string(), 3);
-            map.insert("key 4".to_string(), 4);
-            map.insert("key 5".to_string(), 5);
+            map.insert("key 1".to_string(), 1)?;
+            map.insert("key 2".to_string(), 2)?;
+            map.insert("key 3".to_string(), 3)?;
+            map.insert("key 4".to_string(), 4)?;
+            map.insert("key 5".to_string(), 5)?;
             assert_eq!(5, map.len());
-            assert_eq!(Some(3), map.get(&"key 3".to_string()));
-            map.remove(&"key 1".to_string());
-            map.remove(&"key 4".to_string());
-            map.insert("key 6".to_string(), 6);
-            map.insert("key 1".to_string(), 100);
-            map.remove(&"key 2".to_string());
-            map.insert("key 7".to_string(), 7);
+            assert_eq!(Some(3), map.get(&"key 3".to_string())?);
+            map.remove(&"key 1".to_string())?;
+            map.remove(&"key 4".to_string())?;
+            map.insert("key 6".to_string(), 6)?;
+            map.insert("key 1".to_string(), 100)?;
+            map.remove(&"key 2".to_string())?;
+            map.insert("key 7".to_string(), 7)?;
             assert_eq!(map.keys(), vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.values(), vec![100, 3, 5, 6, 7]);
             assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string()))), vec![3, 5, 6]);
@@ -674,19 +637,19 @@ mod tests {
         {
             let map = BTree::open_or_create(&log_file)?;
             assert_eq!(5, map.len());
-            assert_eq!(Some(100), map.get(&"key 1".to_string()));
-            assert_eq!(None, map.get(&"key 4".to_string()));
-            assert_eq!(None, map.get(&"key 2".to_string()));
-            map.insert("key 3".to_string(), 33);
-            assert_eq!(Some(33), map.get(&"key 3".to_string()));
-            map.remove(&"key 1".to_string());
+            assert_eq!(Some(100), map.get(&"key 1".to_string())?);
+            assert_eq!(None, map.get(&"key 4".to_string())?);
+            assert_eq!(None, map.get(&"key 2".to_string())?);
+            map.insert("key 3".to_string(), 33)?;
+            assert_eq!(Some(33), map.get(&"key 3".to_string())?);
+            map.remove(&"key 1".to_string())?;
         }
         // after restart
         {
             let map = BTree::open_or_create(&log_file)?;
             assert_eq!(4, map.len());
-            assert_eq!(Some(33), map.get(&"key 3".to_string()));
-            assert_eq!(None, map.get(&"key 1".to_string()));
+            assert_eq!(Some(33), map.get(&"key 3".to_string())?);
+            assert_eq!(None, map.get(&"key 1".to_string())?);
             assert_eq!(map.keys(), vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.values(), vec![33, 5, 6, 7]);
             assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string()))), vec![("key 5".to_string(), 5)]);
