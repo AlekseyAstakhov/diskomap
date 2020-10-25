@@ -91,7 +91,7 @@ where
     /// # Errors
     ///
     /// If Json serialize error or RwLock is poisoned but it's will unreachable.
-    pub fn insert_with_result(&self, key: Key, value: Value) -> Result<Option<Value>, Error> {
+    fn insert_with_result(&self, key: Key, value: Value) -> Result<Option<Value>, Error> {
         let key_val_json = serde_json::to_string(&(&key, &value))?;
 
         let updated_value = match self.inner.map.read()?.get(&key) {
@@ -142,7 +142,7 @@ where
     /// # Errors
     ///
     /// If RwLock is poisoned but it's will unreachable.
-    pub fn get_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
+    fn get_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
         let map = self.inner.map.read()?;
         if let Some(val_rw) = map.get(key) {
             return Ok(Some(val_rw.read()?.clone()));
@@ -164,7 +164,7 @@ where
     /// # Errors
     ///
     /// If Json serialize error or RwLock is poisoned but it's will unreachable.
-    pub fn remove_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
+    fn remove_with_result(&self, key: &Key) -> Result<Option<Value>, Error> {
         if let Some(old_value) = self.inner.map.write()?.remove(&key) {
             let value = old_value.read()?;
 
