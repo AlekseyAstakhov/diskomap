@@ -215,7 +215,7 @@ where
         let mut map = BTreeMap::new();
         let mut reader = BufReader::new(file);
         let mut line = String::with_capacity(150);
-        let mut line_num = 0;
+        let mut line_num = 1;
         while reader.read_line(&mut line)? > 0 {
             const MIN_LINE_LEN: usize = 4;
             if line.len() < MIN_LINE_LEN {
