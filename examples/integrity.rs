@@ -1,6 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For simple data integrity on disk, you can use crc32 for each line in log file.
-    let users = diskomap::BTree::open_or_create("db/integrity_db.txt", Some(diskomap::Integrity::Crc32))?;
+    let users = diskomap::BTree::open_or_create("db/integrity_crc32.txt", Some(diskomap::Integrity::Crc32))?;
 
     users.insert(0, "a".to_string())?;
     users.insert(3, "b".to_string())?;
