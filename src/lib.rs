@@ -4,3 +4,4 @@ pub mod btree;
 pub mod btree_index;
 
 pub use btree::BTree;
+pub use btree::Integrity;

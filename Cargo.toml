@@ -12,6 +12,8 @@ serde_json = "1.0.56"
 threadpool = "1.7.1"
 fs2 = "0.4.3"
 tempfile = "3.1.0"
+crc = "1.8.1"
+rust-crypto = "0.2"
 
 [dev-dependencies]
 serde = { version = "1.0.56", features = ["derive"] }

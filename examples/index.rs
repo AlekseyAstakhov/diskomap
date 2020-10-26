@@ -7,7 +7,7 @@ struct User {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let users = diskomap::BTree::open_or_create("db/index_db.txt")?;
+    let users = diskomap::BTree::open_or_create("db/index_db.txt", None)?;
 
     let user_name_index = users.create_btree_index(|user: &User|
         user.name.clone()
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Users 30 - 40 ages:");
     for user_id in age_index.get(&30)? {
-        let user = users.get(&user_id).unwrap();
+        let user = users.get(&user_id)?;
         println!("{:?}", &user);
     }
 

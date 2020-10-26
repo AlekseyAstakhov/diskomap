@@ -6,11 +6,14 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::panic;
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
 use threadpool::ThreadPool;
+use crc::crc32;
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -20,6 +23,12 @@ use threadpool::ThreadPool;
 pub struct BTree<Key, Value> {
     /// Inner data this struct, need for Arc all fields together.
     inner: Arc<Inner<Key, Value>>,
+}
+
+/// Mechanism of controlling the integrity of stored data in a log file.
+pub enum Integrity {
+    Sha256Blockchain(String),
+    Crc32,
 }
 
 /// Inner data of 'BTree', need for Arc all fields of 'BTree' together.
@@ -36,6 +45,8 @@ struct Inner<Key, Value> {
     indexes: RwLock<Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>>,
     /// Error handler of background thread. It's will call when error of writing to log file.
     on_background_error: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
+    /// Mechanism of controlling the integrity of stored data in a log file.
+    integrity: Arc<Mutex<Option<Integrity>>>,
 }
 
 impl<Key, Value: 'static> BTree<Key, Value>
@@ -46,14 +57,16 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(operations_log_file: &str) -> Result<Self, BTreeError> {
+    pub fn open_or_create(operations_log_file: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
         create_dirs_to_path_if_not_exist(operations_log_file)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(operations_log_file)?;
         file.lock_exclusive()?;
 
+        let integrity = Arc::new(Mutex::new(integrity));
+
         // load current map from operations log file
-        let map = match BTree::load_from_file(&mut file) {
+        let map = match BTree::load_from_file(&mut file, &mut integrity.lock()?.deref_mut()) {
             Ok(map) => {
                 map
             }
@@ -71,6 +84,7 @@ where
                 thread_pool: Mutex::new(ThreadPool::new(1)),
                 indexes: RwLock::new(Vec::new()),
                 on_background_error: Arc::new(Mutex::new(None)),
+                integrity,
             }),
         })
     }
@@ -197,7 +211,7 @@ where
     }
 
     // Load from file and process all operations and make actual map.
-    pub fn load_from_file(file: &mut File) -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError> {
+    pub fn load_from_file(file: &mut File, integrity: &mut Option<Integrity>) -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError> {
         let mut map = BTreeMap::new();
         let mut reader = BufReader::new(file);
         let mut line = String::with_capacity(150);
@@ -208,8 +222,33 @@ where
                 return Err(BTreeError::FileLineLengthLessThenMinimum { line_num });
             }
 
-            match &line[..3] {
-                "ins" => match serde_json::from_str(&line[4..]) {
+            let line_data = if let Some(integrity) = integrity {
+                let data_index = line.rfind(' ').ok_or(BTreeError::NoExpectedHash { line_num })?;
+                let line_data = &line[..data_index];
+                let hash_data = line[data_index + 1..line.len()].trim_end();
+
+                match integrity {
+                    Integrity::Sha256Blockchain(hash_of_prev) => {
+                        let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
+                        if sum != hash_data {
+                            return Err(BTreeError::WrongSha256Blockchain { line_num });
+                        }
+                        *hash_of_prev = sum;
+                    },
+                    Integrity::Crc32 => {
+                        let crc = crc32::checksum_ieee(line_data.as_bytes());
+                        if crc.to_string() != hash_data {
+                            return Err(BTreeError::WrongCrc32 { line_num });
+                        }
+                    },
+                }
+                line_data
+            } else {
+                &line[..]
+            };
+
+            match &line_data[..3] {
+                "ins" => match serde_json::from_str(&line_data[4..]) {
                     Ok((key, val)) => {
                         map.insert(key, RwLock::new(val));
                     }
@@ -217,7 +256,7 @@ where
                         return Err(BTreeError::DeserializeJsonError { err, line_num });
                     }
                 },
-                "rem" => match serde_json::from_str(&line[4..]) {
+                "rem" => match serde_json::from_str(&line_data[4..]) {
                     Ok(key) => {
                         map.remove(&key);
                     }
@@ -295,11 +334,33 @@ where
     fn write_insert_to_log_file_async(&self, key_val_json: String) -> Result<(), BTreeError> {
         let file = self.inner.log_file.clone();
         let error_callback = self.inner.on_background_error.clone();
+        let integrity = self.inner.integrity.clone();
 
         self.inner.thread_pool.lock()?.execute(move || {
-            let user_line = "ins ".to_string() + &key_val_json + "\n";
+            let mut line = "ins ".to_string() + &key_val_json;
+
+            if let Ok(mut integrity) = integrity.lock() {
+                if let Some(integrity) = integrity.deref_mut() {
+                    match integrity {
+                        Integrity::Sha256Blockchain(prev_hash) => {
+                            let sum = blockchain_sha256(&prev_hash, line.as_bytes());
+                            line = format!("{} {}", line, sum);
+                            *prev_hash = sum;
+                        },
+                        Integrity::Crc32 => {
+                            let crc = crc32::checksum_ieee(line.as_bytes());
+                            line = format!("{} {}", line, crc);
+                        },
+                    }
+                }
+            } else {
+                unreachable!();
+            }
+
+            line += "\n";
+
             let res = match file.lock() {
-                Ok(mut file) => file.write_all(user_line.as_bytes()),
+                Ok(mut file) => file.write_all(line.as_bytes()),
                 Err(err) => {
                     dbg!(err);
                     unreachable!();
@@ -319,10 +380,33 @@ where
     fn write_remove_to_log_file_async(&self, key_json: String) -> Result<(), BTreeError> {
         let file = self.inner.log_file.clone();
         let error_hook = self.inner.on_background_error.clone();
+        let integrity = self.inner.integrity.clone();
+
         self.inner.thread_pool.lock()?.execute(move || {
-            let user_line = "rem ".to_string() + &key_json + "\n";
+            let mut line = "rem ".to_string() + &key_json;
+
+            if let Ok(mut integrity) = integrity.lock() {
+                if let Some(integrity) = integrity.deref_mut() {
+                    match integrity {
+                        Integrity::Sha256Blockchain(prev_hash) => {
+                            let sum = blockchain_sha256(&prev_hash, line.as_bytes());
+                            line = format!("{} {}", line, sum);
+                            *prev_hash = sum;
+                        },
+                        Integrity::Crc32 => {
+                            let crc = crc32::checksum_ieee(line.as_bytes());
+                            line = format!("{} {}", line, crc);
+                        },
+                    }
+                }
+            } else {
+                unreachable!();
+            }
+
+            line += "\n";
+
             let res = match file.lock() {
-                Ok(mut file) => file.write_all(user_line.as_bytes()),
+                Ok(mut file) => file.write_all(line.as_bytes()),
                 Err(err) => { dbg!(err); unreachable!(); }
             };
 
@@ -434,6 +518,12 @@ impl<Key, Value> Drop for BTree<Key, Value> {
 pub enum BTreeError {
     /// Error of working with file.
     FileError(std::io::Error),
+    /// There is no expected checksum or hash in the log file line when integrity used.
+    NoExpectedHash { line_num: usize, },
+    /// Wrong Sha256 of log file line data when crc32 integrity used.
+    WrongSha256Blockchain { line_num: usize, },
+    /// Wrong crc32 of log file line data when crc32 integrity used.
+    WrongCrc32 { line_num: usize, },
     /// Json error with line number in operations log file.
     DeserializeJsonError { err: serde_json::Error, line_num: usize, },
     /// When line length in operations log file less then need.
@@ -488,7 +578,7 @@ pub(crate) trait IndexTrait<BTreeKey, BTreeValue> {
     fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError>;
 }
 
-// create dirs to path if not exist
+/// Create dirs to path if not exist.
 fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::Error> {
     if let Some(index) = path_to_file.rfind('/') {
         let dir_path = &path_to_file[..index];
@@ -498,6 +588,19 @@ fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::E
     }
 
     Ok(())
+}
+
+/// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
+fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.input(line_data);
+    let current_data_hash = hasher.result_str();
+    let mut buf = Vec::new(); // need optimize to [u8; 512]
+    buf.extend_from_slice(prev_hash.as_bytes());
+    buf.extend_from_slice(&current_data_hash.as_bytes());
+    let mut hasher = Sha256::new();
+    hasher.input(&buf);
+    hasher.result_str()
 }
 
 #[cfg(test)]
@@ -511,12 +614,12 @@ mod tests {
         // new log file
         let log_file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&log_file)?;
+            let map = BTree::open_or_create(&log_file, None)?;
             map.insert((), ())?;
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file)?;
+            let map = BTree::open_or_create(&log_file, None)?;
             assert_eq!(Some(()), map.get(&())?);
             map.insert((), ())?;
             assert_eq!(1, map.len()?);
@@ -532,7 +635,7 @@ mod tests {
         // new log file
         let log_file = tempdir()?.path().join("test2.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&log_file)?;
+            let map = BTree::open_or_create(&log_file, None)?;
             map.insert("key 1".to_string(), 1)?;
             map.insert("key 2".to_string(), 2)?;
             map.insert("key 3".to_string(), 3)?;
@@ -553,7 +656,7 @@ mod tests {
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file)?;
+            let map = BTree::open_or_create(&log_file, None)?;
             assert_eq!(5, map.len()?);
             assert_eq!(Some(100), map.get(&"key 1".to_string())?);
             assert_eq!(None, map.get(&"key 4".to_string())?);
@@ -564,7 +667,7 @@ mod tests {
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file)?;
+            let map = BTree::open_or_create(&log_file, None)?;
             assert_eq!(4, map.len()?);
             assert_eq!(Some(33), map.get(&"key 3".to_string())?);
             assert_eq!(None, map.get(&"key 1".to_string())?);
