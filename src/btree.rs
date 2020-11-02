@@ -27,9 +27,9 @@ pub struct BTree<Key, Value> {
 
 /// Mechanism of controlling the integrity of stored data in a log file.
 pub enum Integrity {
-    // Sha256 blockchain. Each line in the operations log file will contain
+    // For Sha256 blockchain. Each line in the operations log file will contain
     // the sum of the hash of the previous line with the operation + data hash of the current line.
-    Sha256Blockchain(String),
+    Sha256Chain(String),
     // crc32 checksum of operation and data for each line in the operations log file.
     Crc32,
 }
@@ -232,7 +232,7 @@ where
                 let hash_data = line[data_index + 1..line.len()].trim_end();
 
                 match integrity {
-                    Integrity::Sha256Blockchain(hash_of_prev) => {
+                    Integrity::Sha256Chain(hash_of_prev) => {
                         let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
                         if sum != hash_data {
                             return Err(BTreeError::WrongSha256Blockchain { line_num });
@@ -346,7 +346,7 @@ where
             if let Ok(mut integrity) = integrity.lock() {
                 if let Some(integrity) = integrity.deref_mut() {
                     match integrity {
-                        Integrity::Sha256Blockchain(prev_hash) => {
+                        Integrity::Sha256Chain(prev_hash) => {
                             let sum = blockchain_sha256(&prev_hash, line.as_bytes());
                             line = format!("{} {}", line, sum);
                             *prev_hash = sum;
@@ -392,7 +392,7 @@ where
             if let Ok(mut integrity) = integrity.lock() {
                 if let Some(integrity) = integrity.deref_mut() {
                     match integrity {
-                        Integrity::Sha256Blockchain(prev_hash) => {
+                        Integrity::Sha256Chain(prev_hash) => {
                             let sum = blockchain_sha256(&prev_hash, line.as_bytes());
                             line = format!("{} {}", line, sum);
                             *prev_hash = sum;
