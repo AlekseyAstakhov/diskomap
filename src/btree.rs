@@ -27,13 +27,16 @@ pub struct BTree<Key, Value> {
 
 /// Mechanism of controlling the integrity of stored data in a log file.
 pub enum Integrity {
+    // Sha256 blockchain. Each line in the operations log file will contain
+    // the sum of the hash of the previous line with the operation + data hash of the current line.
     Sha256Blockchain(String),
+    // crc32 checksum of operation and data for each line in the operations log file.
     Crc32,
 }
 
-/// Inner data of 'BTree', need for Arc all fields of 'BTree' together.
+/// Inner data of 'BTree', need for clone all fields of 'BTree' together.
 struct Inner<Key, Value> {
-    /// Map in memory.
+    /// Map in the RAM.
     map: RwLock<BTreeMap<Key, RwLock<Value>>>,
     /// Path to operations log file.
     log_file_path: Arc<String>,
@@ -89,7 +92,8 @@ where
         })
     }
 
-    /// Insert value to the map in memory and asynchronously append operation to the file.
+    /// Inserts a key-value pair into the map. This function is used for updating too.
+    /// Data will be written to RAM immediately, and to disk later in a separate thread.
     pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
         let key_val_json = serde_json::to_string(&(&key, &value))?;
 
@@ -129,7 +133,7 @@ where
         Ok(old_value)
     }
 
-    /// Get value by key from the map in memory. No writing to the operations log file.
+    /// Get value by key from the map in RAM. No writing to the operations log file.
     pub fn get(&self, key: &Key) -> Result<Option<Value>, BTreeError> {
         let map = self.inner.map.read()?;
         if let Some(val_rw) = map.get(key) {
@@ -513,7 +517,7 @@ impl<Key, Value> Drop for BTree<Key, Value> {
     }
 }
 
-/// Error of operations log file.
+/// Errors when working with BTree.
 #[derive(Debug)]
 pub enum BTreeError {
     /// Error of working with file.
@@ -534,6 +538,7 @@ pub enum BTreeError {
     JsonSerializeError(serde_json::Error),
     /// Lock error.
     PoisonError,
+    /// Errors when working with the indexes.
     IndexError,
 }
 
@@ -572,9 +577,9 @@ impl std::error::Error for BTreeError {}
 
 /// Custom index. 'BTree' contains this dyn traits and use when insert or delete elements for update indexes.
 pub(crate) trait IndexTrait<BTreeKey, BTreeValue> {
-    /// Updates index when insert or update operation on 'BTree'.
+    /// Updates index when insert or update operation on map.
     fn on_insert(&self, key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError>;
-    /// Updates index when remove operation on 'BTree'.
+    /// Updates index when remove operation on map.
     fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError>;
 }
 

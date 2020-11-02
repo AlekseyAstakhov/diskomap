@@ -2,11 +2,13 @@ use crate::btree::IndexTrait;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, RwLock};
 
+/// The Btree index for getting indexes of the map by parts of value.
 #[derive(Clone)]
 pub struct BtreeIndex<IndexKey: Ord, BTreeKey, BTreeValue> {
     pub(crate) inner: Arc<Inner<IndexKey, BTreeKey, BTreeValue>>,
 }
 
+/// Inner data of 'BtreeIndex', need for clone all fields of 'BtreeIndex' together.
 pub struct Inner<IndexKey: Ord, BTreeKey, BTreeValue> {
     pub(crate) map: RwLock<BTreeMap<IndexKey, BTreeSet<BTreeKey>>>,
     pub(crate) make_index_key_callback: RwLock<Box<dyn Fn(&BTreeValue) -> IndexKey + Send + Sync + 'static>>,

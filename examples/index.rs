@@ -9,7 +9,11 @@ struct User {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let users = diskomap::BTree::open_or_create("db/index_db.txt", None)?;
 
+    // The btree index can be of a any type that implements Ord trait.
+    // Usually index is part of the value. Use of data not included in the value should be avoided.
+    // For example, the index for getting users by name looks like this:
     let user_name_index = users.create_btree_index(|user: &User|
+        // This closure will be called every time when insert or delete to the users btree.
         user.name.clone()
     )?;
 
@@ -25,6 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:?}", &user);
     }
 
+    // Also the index can be more complex than part of the value. For example:
     let age_index = users.create_btree_index(|user: &User|
         user.age - user.age % 30
     )?;
@@ -35,8 +40,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:?}", &user);
     }
 
-    // Multi-threaded index creating:
-    //
     // If data is big, creating indexes may take some time.
     // If indexes more then one, then to speed up,
     // you can create them in parallel in several threads.

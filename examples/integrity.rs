@@ -1,7 +1,8 @@
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // For simple data integrity in the log file, you can use a crc32 checksum for each line.
+    // For simple data integrity in the log file, you can use a crc32 checksum of operation + data
+    // for each line of the operations log file.
     let file_with_crc32 = "db/integrity_crc32.txt";
     let users = diskomap::BTree::open_or_create(file_with_crc32, Some(diskomap::Integrity::Crc32))?;
     users.insert(0, "a".to_string())?;
@@ -11,8 +12,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("File content with crc32:");
     print!("{}", fs::read_to_string(file_with_crc32)?);
 
-    // For unchanged integrity, you can use the sha256 chain, where each line will contain
-    // the sum of the hash of the previous line with the data hash of the current line.
+    // For unchanged integrity, you can use the sha256 chain.
+    // Each line in the operations log file will contain the sum of the hash of the previous line
+    // with the data hash of the current line.
 
     // The initial hash to be used as the previous line hash for generate hash first line.
     let initial_hash = String::new();
