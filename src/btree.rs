@@ -39,7 +39,7 @@ struct Inner<Key, Value> {
     /// Map in the RAM.
     map: RwLock<BTreeMap<Key, RwLock<Value>>>,
     /// Path to operations log file.
-    log_file_path: Arc<String>,
+    log_file_path: String,
     /// Opened with exclusive lock operations log file.
     log_file: Arc<Mutex<File>>,
     /// Thread pool with one thread for asynchronously append operations to the operations log file.
@@ -82,7 +82,7 @@ where
         Ok(BTree {
             inner: Arc::new(Inner {
                 map: RwLock::new(map),
-                log_file_path: Arc::new(operations_log_file.to_string()),
+                log_file_path: operations_log_file.to_string(),
                 log_file: Arc::new(Mutex::new(file)),
                 thread_pool: Mutex::new(ThreadPool::new(1)),
                 indexes: RwLock::new(Vec::new()),
