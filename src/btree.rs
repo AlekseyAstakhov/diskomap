@@ -95,8 +95,6 @@ where
     /// Inserts a key-value pair into the map. This function is used for updating too.
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
     pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
-        let key_val_json = serde_json::to_string(&(&key, &value))?;
-
         let updated_value = match self.inner.map.read()?.get(&key) {
             // if the value exists, then try to update it
             Some(cur_value) => {
@@ -128,6 +126,7 @@ where
         }
 
         // add operation to operations log file
+        let key_val_json = serde_json::to_string(&(&key, &value))?;
         self.write_insert_to_log_file_async(key_val_json)?;
 
         Ok(old_value)
@@ -286,12 +285,13 @@ where
     /// All current data state will be presented as 'set' records.
     /// Locks 'Self::map' with shared read access while processing.
     /// If data is big it's take some time because writes all contents to a file.
-    pub fn remove_history(&self) -> Result<(), BTreeError> {
+    pub fn remove_history(&self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
         let map = self.inner.map.read()?;
         let tempdir = tempdir()?;
         let tmp_file_path = tempdir.path().join(self.inner.log_file_path.deref()).to_str().unwrap_or("").to_string();
         create_dirs_to_path_if_not_exist(&tmp_file_path)?;
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
+        let mut integrity = integrity;
 
         // wait writing queue
         self.inner.thread_pool.lock()?.join();
@@ -300,8 +300,24 @@ where
         // write all to tmp file
         for (key, value) in map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            let user_line = "ins ".to_string() + &key_val_json + "\n";
-            tmp_file.write_all(user_line.as_bytes())?;
+            let mut line = "ins ".to_string() + &key_val_json;
+
+            if let Some(integrity) = &mut integrity {
+                match integrity {
+                    Integrity::Sha256Chain(prev_hash) => {
+                        let sum = blockchain_sha256(&prev_hash, line.as_bytes());
+                        line = format!("{} {}", line, sum);
+                        *prev_hash = sum;
+                    },
+                    Integrity::Crc32 => {
+                        let crc = crc32::checksum_ieee(line.as_bytes());
+                        line = format!("{} {}", line, crc);
+                    },
+                }
+            }
+
+            line.push('\n');
+            tmp_file.write_all(line.as_bytes())?;
         }
 
         drop(tmp_file);
@@ -317,6 +333,8 @@ where
         if let Err(err) = reaname_res {
             return Err(BTreeError::FileError(err));
         }
+
+        *self.inner.integrity.lock()? = integrity;
 
         Ok(())
     }
@@ -361,7 +379,7 @@ where
                 unreachable!();
             }
 
-            line += "\n";
+            line.push('\n');
 
             let res = match file.lock() {
                 Ok(mut file) => file.write_all(line.as_bytes()),
@@ -407,7 +425,7 @@ where
                 unreachable!();
             }
 
-            line += "\n";
+            line.push('\n');
 
             let res = match file.lock() {
                 Ok(mut file) => file.write_all(line.as_bytes()),
