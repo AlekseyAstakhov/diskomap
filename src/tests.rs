@@ -164,4 +164,59 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn Sha256Chain_integrity() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::Integrity;
+        use crate::BTree;
+        use std::fs::OpenOptions;
+
+        let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e";
+
+        let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
+        let map = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        map.insert(0, "a".to_string())?;
+        map.insert(3, "b".to_string())?;
+        map.insert(5, "c".to_string())?;
+        drop(map);
+
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected = "ins [0,\"a\"] fcfd9332281f041699b205ac1dfd27adecee7f3861d8893215dc93dda3b8803c\n\
+                              ins [3,\"b\"] d7d09f5c06dea915b6a6f26a5f8414e19c02251887be41c5006c1334f6307f49\n\
+                              ins [5,\"c\"] a78a60587a54d0580f6d4df05ccbefb89931b6a1f018315d3d9b9747686a9d56\n";
+
+        assert_eq!(file_content, expected);
+
+        let map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        map.remove(&3)?;
+        drop(map);
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected = "ins [0,\"a\"] fcfd9332281f041699b205ac1dfd27adecee7f3861d8893215dc93dda3b8803c\n\
+                              ins [3,\"b\"] d7d09f5c06dea915b6a6f26a5f8414e19c02251887be41c5006c1334f6307f49\n\
+                              ins [5,\"c\"] a78a60587a54d0580f6d4df05ccbefb89931b6a1f018315d3d9b9747686a9d56\n\
+                              rem 3 c686f4889cd4b10acfea6d23d16079bb76cadba1840543a1100a60c20360c4b2\n";
+
+        assert_eq!(file_content, expected);
+
+        let mut f = OpenOptions::new().read(true).write(true).create(true).open(&file)?;
+        // wrong d7e09f5c06dea915b6a6f26a5f8414e19c02251887be41c5006c1334f6307f49
+        let bad_content = "ins [0,\"a\"] fcfd9332281f041699b205ac1dfd27adecee7f3861d8893215dc93dda3b8803c\n\
+                              ins [3,\"b\"] d7e09f5c06dea915b6a6f26a5f8414e19c02251887be41c5006c1334f6307f49\n\
+                              ins [5,\"c\"] a78a60587a54d0580f6d4df05ccbefb89931b6a1f018315d3d9b9747686a9d56\n";
+
+        f.write_all(bad_content.as_bytes())?;
+        drop(f);
+        let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())));
+        let mut crc_is_correct = true;
+        if let Err(res) = res {
+            if let BTreeError::WrongSha256Chain { line_num } = res {
+                if line_num == 2 {
+                    crc_is_correct = false;
+                }
+            }
+        }
+        assert!(!crc_is_correct);
+
+        Ok(())
+    }
 }
