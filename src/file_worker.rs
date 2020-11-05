@@ -16,27 +16,29 @@ pub(crate) struct FileWorker {
 
 impl FileWorker {
     /// Constructs 'FileWorker'. 'file' is opened and exclusive locked file.
-    pub fn new(mut file: File) -> Self {
+    pub fn new(mut file: File, error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>) -> Self {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
             match task_receiver.recv() {
                 Ok(task) => {
                     match task {
-                        FileWorkerTask::WriteInsert { key_val_json, error_callback, integrity } => {
+                        FileWorkerTask::WriteInsert { key_val_json, integrity } => {
                             match write_insert_to_log_file(&key_val_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
                                 Ok(()) => {},
                                 Err(err) => call_error_callback(&error_callback, err),
                             }
                         },
-                        FileWorkerTask::WriteRemove { key_json, error_callback, integrity  } => {
+                        FileWorkerTask::WriteRemove { key_json, integrity  } => {
                             match write_remove_to_log_file(&key_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
                                 Ok(()) => {},
                                 Err(err) => call_error_callback(&error_callback, err),
                             }
                         },
                         FileWorkerTask::Stop => {
-                            file.unlock();
+                            if let Err(err) = file.unlock() {
+                                call_error_callback(&error_callback, err);
+                            }
                             break 'thread_loop;
                         },
                     }
@@ -51,14 +53,14 @@ impl FileWorker {
     }
 
     /// Write insert operation in the file in the background thread.
-    pub fn write_insert(&self, key_val_json: String, error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
-        let task = FileWorkerTask::WriteInsert { key_val_json, error_callback, integrity };
+    pub fn write_insert(&self, key_val_json: String, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
+        let task = FileWorkerTask::WriteInsert { key_val_json, integrity };
         self.tasks_sender.send(task).map_err(|_|())
     }
 
     /// Write remove operation in the file in the background thread.
-    pub fn write_remove(&self, key_json: String, error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
-        let task = FileWorkerTask::WriteRemove { key_json, error_callback, integrity };
+    pub fn write_remove(&self, key_json: String, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
+        let task = FileWorkerTask::WriteRemove { key_json, integrity };
         self.tasks_sender.send(task).map_err(|_|())
     }
 }
@@ -98,13 +100,11 @@ enum FileWorkerTask {
     /// Write insert operation in the file in the background thread.
     WriteInsert {
         key_val_json: String,
-        error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
         integrity: Arc<Mutex<Option<Integrity>>>,
     },
     /// Write remove operation in the file in the background thread.
     WriteRemove {
         key_json: String,
-        error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
         integrity: Arc<Mutex<Option<Integrity>>>,
     },
     /// Stop worker

@@ -76,13 +76,15 @@ where
             }
         };
 
+        let on_background_error = Arc::new(Mutex::new(None));
+
         Ok(BTree {
             inner: Arc::new(Inner {
                 map: RwLock::new(map),
                 log_file_path: operations_log_file.to_string(),
-                file_worker: Mutex::new(FileWorker::new(file)),
+                file_worker: Mutex::new(FileWorker::new(file, on_background_error.clone())),
                 indexes: RwLock::new(Vec::new()),
-                on_background_error: Arc::new(Mutex::new(None)),
+                on_background_error: on_background_error,
                 integrity,
             }),
         })
@@ -123,9 +125,8 @@ where
 
         // add operation to operations log file
         let key_val_json = serde_json::to_string(&(&key, &value))?;
-        let error_callback = self.inner.on_background_error.clone();
         let integrity = self.inner.integrity.clone();
-        self.inner.file_worker.lock()?.write_insert(key_val_json, error_callback, integrity).unwrap();
+        self.inner.file_worker.lock()?.write_insert(key_val_json, integrity).unwrap();
 
         Ok(old_value)
     }
@@ -151,9 +152,8 @@ where
             }
 
             let key_json = serde_json::to_string(&key)?;
-            let error_callback = self.inner.on_background_error.clone();
             let integrity = self.inner.integrity.clone();
-            self.inner.file_worker.lock()?.write_remove(key_json, error_callback, integrity).unwrap();
+            self.inner.file_worker.lock()?.write_remove(key_json, integrity).unwrap();
 
             return Ok(Some(value.clone()));
         }
@@ -244,7 +244,7 @@ where
 
         let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
             .open(self.inner.log_file_path.deref())?;
-        *file_worker = FileWorker::new(reopened_file);
+        *file_worker = FileWorker::new(reopened_file, self.inner.on_background_error.clone());
 
         if let Err(err) = reaname_res {
             return Err(BTreeError::FileError(err));
