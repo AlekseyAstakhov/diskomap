@@ -34,7 +34,7 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
                 Integrity::Sha256Chain(hash_of_prev) => {
                     let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
                     if sum != hash_data {
-                        return Err(BTreeError::WrongSha256Blockchain { line_num });
+                        return Err(BTreeError::WrongSha256Chain { line_num });
                     }
                     *hash_of_prev = sum;
                 },

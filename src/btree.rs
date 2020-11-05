@@ -311,8 +311,8 @@ pub enum BTreeError {
     FileError(std::io::Error),
     /// There is no expected checksum or hash in the log file line when integrity used.
     NoExpectedHash { line_num: usize, },
-    /// Wrong Sha256 of log file line data when crc32 integrity used.
-    WrongSha256Blockchain { line_num: usize, },
+    /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
+    WrongSha256Chain { line_num: usize, },
     /// Wrong crc32 of log file line data when crc32 integrity used.
     WrongCrc32 { line_num: usize, },
     /// Json error with line number in operations log file.
