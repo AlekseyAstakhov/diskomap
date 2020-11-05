@@ -2,7 +2,7 @@
 
 pub mod btree;
 pub mod btree_index;
-mod write_worker;
+mod file_worker;
 
 pub use btree::BTree;
 pub use btree::Integrity;

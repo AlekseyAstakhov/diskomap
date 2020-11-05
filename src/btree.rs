@@ -1,14 +1,13 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
-use crate::write_worker::WriteWorker;
+use crate::file_worker::FileWorker;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
-use std::panic;
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
 use crc::crc32;
@@ -40,10 +39,8 @@ struct Inner<Key, Value> {
     map: RwLock<BTreeMap<Key, RwLock<Value>>>,
     /// Path to operations log file.
     log_file_path: String,
-    /// Opened with exclusive lock operations log file.
-    log_file: Arc<Mutex<File>>,
     // For append operations to the operations log file in background thread.
-    write_worker: Mutex<WriteWorker>,
+    file_worker: Mutex<FileWorker>,
 
     /// Created indexes.
     indexes: RwLock<Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>>,
@@ -84,8 +81,7 @@ where
             inner: Arc::new(Inner {
                 map: RwLock::new(map),
                 log_file_path: operations_log_file.to_string(),
-                log_file: Arc::new(Mutex::new(file)),
-                write_worker: Mutex::new(WriteWorker::new()),
+                file_worker: Mutex::new(FileWorker::new(file)),
                 indexes: RwLock::new(Vec::new()),
                 on_background_error: Arc::new(Mutex::new(None)),
                 integrity,
@@ -128,10 +124,9 @@ where
 
         // add operation to operations log file
         let key_val_json = serde_json::to_string(&(&key, &value))?;
-        let file = self.inner.log_file.clone();
         let error_callback = self.inner.on_background_error.clone();
         let integrity = self.inner.integrity.clone();
-        self.inner.write_worker.lock()?.write_insert(key_val_json, file, error_callback, integrity).unwrap();
+        self.inner.file_worker.lock()?.write_insert(key_val_json, error_callback, integrity).unwrap();
 
         Ok(old_value)
     }
@@ -157,10 +152,9 @@ where
             }
 
             let key_json = serde_json::to_string(&key)?;
-            let file = self.inner.log_file.clone();
             let error_callback = self.inner.on_background_error.clone();
             let integrity = self.inner.integrity.clone();
-            self.inner.write_worker.lock()?.write_remove(key_json, file, error_callback, integrity).unwrap();
+            self.inner.file_worker.lock()?.write_remove(key_json, error_callback, integrity).unwrap();
 
             return Ok(Some(value.clone()));
         }
@@ -297,46 +291,27 @@ where
         let map = self.inner.map.read()?;
         let tempdir = tempdir()?;
         let tmp_file_path = tempdir.path().join(self.inner.log_file_path.deref()).to_str().unwrap_or("").to_string();
+
         create_dirs_to_path_if_not_exist(&tmp_file_path)?;
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
         let mut integrity = integrity;
 
+        let mut file_worker = self.inner.file_worker.lock()?;
         // here waiting for worker queue
-        *self.inner.write_worker.lock()? = WriteWorker::new();
 
-        let mut log_file = self.inner.log_file.lock()?;
         // write all to tmp file
         for (key, value) in map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            let mut line = "ins ".to_string() + &key_val_json;
-
-            if let Some(integrity) = &mut integrity {
-                match integrity {
-                    Integrity::Sha256Chain(prev_hash) => {
-                        let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                        line = format!("{} {}", line, sum);
-                        *prev_hash = sum;
-                    },
-                    Integrity::Crc32 => {
-                        let crc = crc32::checksum_ieee(line.as_bytes());
-                        line = format!("{} {}", line, crc);
-                    },
-                }
-            }
-
-            line.push('\n');
-            tmp_file.write_all(line.as_bytes())?;
+            crate::file_worker::write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
         }
 
         drop(tmp_file);
 
-        log_file.unlock()?;
-
         let reaname_res = std::fs::rename(&tmp_file_path, self.inner.log_file_path.deref());
 
-        *log_file = OpenOptions::new().create(true).read(true).write(true).append(true)
+        let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
             .open(self.inner.log_file_path.deref())?;
-        log_file.lock_exclusive()?;
+        *file_worker = FileWorker::new(reopened_file);
 
         if let Err(err) = reaname_res {
             return Err(BTreeError::FileError(err));
@@ -403,16 +378,6 @@ where
         }
 
         Ok(values)
-    }
-}
-
-impl<Key, Value> Drop for BTree<Key, Value> {
-    /// Waits for writing to the operations log file file and unlock it.
-    fn drop(&mut self) {
-        match self.inner.log_file.lock() {
-            Ok(file) => file.unlock().unwrap_or_else(|err| { dbg!(err); }),
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
     }
 }
 
