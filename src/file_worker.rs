@@ -1,12 +1,12 @@
+use crate::integrity::Integrity;
+use crate::file_work::{write_insert_to_file, write_remove_to_file};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::panic;
 use std::ops::{Deref, DerefMut};
-use crate::Integrity;
 use fs2::FileExt;
-use crate::file_work::{write_insert_to_file, write_remove_to_file};
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {

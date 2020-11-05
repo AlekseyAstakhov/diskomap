@@ -1,9 +1,9 @@
-use crate::Integrity;
+use crate::integrity::{Integrity, blockchain_sha256};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::collections::BTreeMap;
 use crc::crc32;
-use crate::btree::{blockchain_sha256, BTreeError};
+use crate::btree::BTreeError;
 use std::sync::RwLock;
 use serde::de::DeserializeOwned;
 use std::io::Write;

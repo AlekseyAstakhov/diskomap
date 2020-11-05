@@ -2,6 +2,7 @@ use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
 use crate::file_work::{load_from_file, write_insert_to_file};
+use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -10,8 +11,6 @@ use std::fs::OpenOptions;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -21,15 +20,6 @@ use crypto::sha2::Sha256;
 pub struct BTree<Key, Value> {
     /// Inner data this struct, need for Arc all fields together.
     inner: Arc<Inner<Key, Value>>,
-}
-
-/// Mechanism of controlling the integrity of stored data in a log file.
-pub enum Integrity {
-    // For Sha256 blockchain. Each line in the operations log file will contain
-    // the sum of the hash of the previous line with the operation + data hash of the current line.
-    Sha256Chain(String),
-    // crc32 checksum of operation and data for each line in the operations log file.
-    Crc32,
 }
 
 /// Inner data of 'BTree', need for clone all fields of 'BTree' together.
@@ -57,10 +47,10 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(file: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
-        create_dirs_to_path_if_not_exist(file)?;
+    pub fn open_or_create(file_path: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
+        create_dirs_to_path_if_not_exist(file_path)?;
 
-        let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file)?;
+        let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
         file.lock_exclusive()?;
 
         let integrity = Arc::new(Mutex::new(integrity));
@@ -81,7 +71,7 @@ where
         Ok(BTree {
             inner: Arc::new(Inner {
                 map: RwLock::new(map),
-                file_path: file.to_string(),
+                file_path: file_path.to_string(),
                 file_worker: Mutex::new(FileWorker::new(file, on_background_error.clone())),
                 indexes: RwLock::new(Vec::new()),
                 on_background_error: on_background_error,
@@ -390,19 +380,6 @@ fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::E
     }
 
     Ok(())
-}
-
-/// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
-pub(crate) fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.input(line_data);
-    let current_data_hash = hasher.result_str();
-    let mut buf = Vec::new(); // need optimize to [u8; 512]
-    buf.extend_from_slice(prev_hash.as_bytes());
-    buf.extend_from_slice(&current_data_hash.as_bytes());
-    let mut hasher = Sha256::new();
-    hasher.input(&buf);
-    hasher.result_str()
 }
 
 #[cfg(test)]

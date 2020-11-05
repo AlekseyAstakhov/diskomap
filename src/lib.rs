@@ -3,7 +3,8 @@
 pub mod btree;
 pub mod btree_index;
 pub mod file_work;
+pub mod integrity;
 mod file_worker;
 
 pub use btree::BTree;
-pub use btree::Integrity;
+pub use integrity::Integrity;
