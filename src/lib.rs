@@ -5,6 +5,7 @@ pub mod btree_index;
 pub mod file_work;
 pub mod integrity;
 mod file_worker;
+mod index;
 mod tests;
 
 pub use btree::BTree;

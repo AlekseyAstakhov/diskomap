@@ -1,5 +1,5 @@
+use crate::index::{IndexTrait, BtreeIndexError};
 use crate::btree_index::BtreeIndex;
-use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
 use crate::file_work::{load_from_file, write_insert_to_file, create_dirs_to_path_if_not_exist};
 use crate::Integrity;
@@ -361,11 +361,3 @@ impl std::fmt::Display for BTreeError {
 }
 
 impl std::error::Error for BTreeError {}
-
-/// Custom index. 'BTree' contains this dyn traits and use when insert or delete elements for update indexes.
-pub(crate) trait IndexTrait<BTreeKey, BTreeValue> {
-    /// Updates index when insert or update operation on map.
-    fn on_insert(&self, key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError>;
-    /// Updates index when remove operation on map.
-    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError>;
-}

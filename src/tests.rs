@@ -166,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn Sha256Chain_integrity() -> Result<(), Box<dyn std::error::Error>> {
+    fn sha256_chain_integrity() -> Result<(), Box<dyn std::error::Error>> {
         use crate::Integrity;
         use crate::BTree;
         use std::fs::OpenOptions;
