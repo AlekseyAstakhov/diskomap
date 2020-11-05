@@ -1,13 +1,15 @@
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn btree() -> Result<(), Box<dyn std::error::Error>> {
-        use std::ops::Bound::{Excluded, Included};
-        use tempfile::tempdir;
-        use crate::BTree;
+    use std::ops::Bound::{Excluded, Included};
+    use tempfile::tempdir;
+    use crate::BTree;
+    use std::io::Write;
+    use crate::btree::BTreeError;
 
+    #[test]
+    fn common() -> Result<(), Box<dyn std::error::Error>> {
         // new file
-        let file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
+        let file = tempdir()?.path().join("btree_test.txt").to_str().unwrap().to_string();
         {
             let map = BTree::open_or_create(&file, None)?;
             map.insert((), ())?;
@@ -28,7 +30,7 @@ mod tests {
         }
 
         // new log file
-        let file = tempdir()?.path().join("test2.txt").to_str().unwrap().to_string();
+        let file = tempdir()?.path().join("btree_test2.txt").to_str().unwrap().to_string();
         {
             let map = BTree::open_or_create(&file, None)?;
             map.insert("key 1".to_string(), 1)?;
@@ -86,7 +88,7 @@ mod tests {
         }
 
         // new log file
-        let file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
+        let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
         let map = crate::BTree::open_or_create(&file, None)?;
         let user_name_index = map.create_btree_index(|value: &User| value.name.clone())?;
 
@@ -117,6 +119,48 @@ mod tests {
         map.insert(8, User { name: "Natasha".to_string(), age: 35 })?;
         assert_eq!(user_name_index.get(&"Masha".to_string())?, vec![3, 12]);
         assert_eq!(user_name_index.get(&"Natasha".to_string())?, vec![0, 5, 8]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn crc32_integrity() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::Integrity;
+        use crate::BTree;
+        use std::fs::OpenOptions;
+
+        let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
+        let map = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        map.insert(0, "a".to_string())?;
+        map.insert(3, "b".to_string())?;
+        map.insert(5, "c".to_string())?;
+        drop(map);
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\n";
+        assert_eq!(file_content, expected_content);
+
+        let map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        map.remove(&3)?;
+        drop(map);
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\nrem 3 596860484\n";
+        assert_eq!(file_content, expected_content);
+
+        let mut f = OpenOptions::new().read(true).write(true).create(true).open(&file)?;
+        // wrong crc 3949338173
+        let bad_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949338173\nins [5,\"c\"] 1023287335\n";
+        f.write_all(bad_content.as_bytes())?;
+        drop(f);
+        let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Crc32));
+        let mut crc_is_correct = true;
+        if let Err(res) = res {
+            if let BTreeError::WrongCrc32 { line_num } = res {
+                if line_num == 2 {
+                    crc_is_correct = false;
+                }
+            }
+        }
+        assert!(!crc_is_correct);
 
         Ok(())
     }
