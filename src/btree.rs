@@ -257,23 +257,22 @@ where
     {
         let mut index_map: BTreeMap<IndexKey, BTreeSet<Key>> = BTreeMap::new();
 
-        { // lock
-            let map = self.inner.map.read()?;
-            for (key, val_rw) in map.iter() {
-                let val = val_rw.read()?;
-                let index_key = make_index_key_callback(&val);
-                match index_map.get_mut(&index_key) {
-                    Some(keys) => {
-                        keys.insert(key.clone());
-                    }
-                    None => {
-                        let mut set = BTreeSet::new();
-                        set.insert(key.clone());
-                        index_map.insert(index_key, set);
-                    }
+        let map = self.inner.map.read()?;
+        for (key, val_rw) in map.iter() {
+            let val = val_rw.read()?;
+            let index_key = make_index_key_callback(&val);
+            match index_map.get_mut(&index_key) {
+                Some(keys) => {
+                    keys.insert(key.clone());
+                }
+                None => {
+                    let mut set = BTreeSet::new();
+                    set.insert(key.clone());
+                    index_map.insert(index_key, set);
                 }
             }
-        } // unlock
+        }
+        drop(map); // unlock
 
         let index = BtreeIndex {
             inner: Arc::new(crate::btree_index::Inner {
