@@ -1,5 +1,6 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
+use crate::write_worker::WriteWorker;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -10,7 +11,6 @@ use std::ops::{Deref, DerefMut};
 use std::panic;
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
-use threadpool::ThreadPool;
 use crc::crc32;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
@@ -42,8 +42,9 @@ struct Inner<Key, Value> {
     log_file_path: String,
     /// Opened with exclusive lock operations log file.
     log_file: Arc<Mutex<File>>,
-    /// Thread pool with one thread for asynchronously append operations to the operations log file.
-    thread_pool: Mutex<ThreadPool>,
+    // For append operations to the operations log file in background thread.
+    write_worker: Mutex<WriteWorker>,
+
     /// Created indexes.
     indexes: RwLock<Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>>,
     /// Error handler of background thread. It's will call when error of writing to log file.
@@ -84,7 +85,7 @@ where
                 map: RwLock::new(map),
                 log_file_path: operations_log_file.to_string(),
                 log_file: Arc::new(Mutex::new(file)),
-                thread_pool: Mutex::new(ThreadPool::new(1)),
+                write_worker: Mutex::new(WriteWorker::new()),
                 indexes: RwLock::new(Vec::new()),
                 on_background_error: Arc::new(Mutex::new(None)),
                 integrity,
@@ -127,7 +128,10 @@ where
 
         // add operation to operations log file
         let key_val_json = serde_json::to_string(&(&key, &value))?;
-        self.write_insert_to_log_file_async(key_val_json)?;
+        let file = self.inner.log_file.clone();
+        let error_callback = self.inner.on_background_error.clone();
+        let integrity = self.inner.integrity.clone();
+        self.inner.write_worker.lock()?.write_insert(key_val_json, file, error_callback, integrity).unwrap();
 
         Ok(old_value)
     }
@@ -153,7 +157,11 @@ where
             }
 
             let key_json = serde_json::to_string(&key)?;
-            self.write_remove_to_log_file_async(key_json)?;
+            let file = self.inner.log_file.clone();
+            let error_callback = self.inner.on_background_error.clone();
+            let integrity = self.inner.integrity.clone();
+            self.inner.write_worker.lock()?.write_remove(key_json, file, error_callback, integrity).unwrap();
+
             return Ok(Some(value.clone()));
         }
 
@@ -293,8 +301,8 @@ where
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
         let mut integrity = integrity;
 
-        // wait writing queue
-        self.inner.thread_pool.lock()?.join();
+        // here waiting for worker queue
+        *self.inner.write_worker.lock()? = WriteWorker::new();
 
         let mut log_file = self.inner.log_file.lock()?;
         // write all to tmp file
@@ -337,128 +345,6 @@ where
         *self.inner.integrity.lock()? = integrity;
 
         Ok(())
-    }
-
-    /// Set error handler of background thread. It's will call when error of writing to log file.
-    pub fn on_background_write_error(&self, callback: Option<impl Fn(std::io::Error) + Send + 'static>) {
-        if let Ok(mut hook) = self.inner.on_background_error.try_lock() {
-            *hook = match callback {
-                Some(callback) => Some(Box::new(callback)),
-                None => None,
-            };
-        } else {
-            unreachable!();
-        }
-    }
-
-    /// Write "insert" operation to the operations log file in background thread.
-    /// Calling need blocking map. Under blocking only set task to the background thread.
-    fn write_insert_to_log_file_async(&self, key_val_json: String) -> Result<(), BTreeError> {
-        let file = self.inner.log_file.clone();
-        let error_callback = self.inner.on_background_error.clone();
-        let integrity = self.inner.integrity.clone();
-
-        self.inner.thread_pool.lock()?.execute(move || {
-            let mut line = "ins ".to_string() + &key_val_json;
-
-            if let Ok(mut integrity) = integrity.lock() {
-                if let Some(integrity) = integrity.deref_mut() {
-                    match integrity {
-                        Integrity::Sha256Chain(prev_hash) => {
-                            let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                            line = format!("{} {}", line, sum);
-                            *prev_hash = sum;
-                        },
-                        Integrity::Crc32 => {
-                            let crc = crc32::checksum_ieee(line.as_bytes());
-                            line = format!("{} {}", line, crc);
-                        },
-                    }
-                }
-            } else {
-                unreachable!();
-            }
-
-            line.push('\n');
-
-            let res = match file.lock() {
-                Ok(mut file) => file.write_all(line.as_bytes()),
-                Err(err) => {
-                    dbg!(err);
-                    unreachable!();
-                }
-            };
-
-            if let Err(err) = res {
-                Self::call_background_error_callback_or_dbg(&error_callback, err);
-            }
-        });
-
-        Ok(())
-    }
-
-    /// Write "remove" operation to the operations log file in background thread.
-    /// Calling need blocking map. Under blocking only set task to the background thread.
-    fn write_remove_to_log_file_async(&self, key_json: String) -> Result<(), BTreeError> {
-        let file = self.inner.log_file.clone();
-        let error_hook = self.inner.on_background_error.clone();
-        let integrity = self.inner.integrity.clone();
-
-        self.inner.thread_pool.lock()?.execute(move || {
-            let mut line = "rem ".to_string() + &key_json;
-
-            if let Ok(mut integrity) = integrity.lock() {
-                if let Some(integrity) = integrity.deref_mut() {
-                    match integrity {
-                        Integrity::Sha256Chain(prev_hash) => {
-                            let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                            line = format!("{} {}", line, sum);
-                            *prev_hash = sum;
-                        },
-                        Integrity::Crc32 => {
-                            let crc = crc32::checksum_ieee(line.as_bytes());
-                            line = format!("{} {}", line, crc);
-                        },
-                    }
-                }
-            } else {
-                unreachable!();
-            }
-
-            line.push('\n');
-
-            let res = match file.lock() {
-                Ok(mut file) => file.write_all(line.as_bytes()),
-                Err(err) => { dbg!(err); unreachable!(); }
-            };
-
-            if let Err(err) = res {
-                Self::call_background_error_callback_or_dbg(&error_hook, err);
-            }
-        });
-
-        Ok(())
-    }
-
-    fn call_background_error_callback_or_dbg(hook: &Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>, err: std::io::Error) {
-        match hook.lock() {
-            Ok(hook) => match hook.deref() {
-                Some(hook) => {
-                    if let Err(err) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                        hook(err);
-                    })) {
-                        dbg!(format!("panic in background error hook function {:?}", &err));
-                    }
-                }
-                None => {
-                    dbg!(&err);
-                }
-            },
-            Err(err) => {
-                dbg!(err);
-                unreachable!();
-            }
-        }
     }
 
     /// Create custom index by value.
@@ -523,11 +409,6 @@ where
 impl<Key, Value> Drop for BTree<Key, Value> {
     /// Waits for writing to the operations log file file and unlock it.
     fn drop(&mut self) {
-        match self.inner.thread_pool.lock() {
-            Ok(thread_pool) => { thread_pool.join(); }
-            Err(err) => { dbg!(err); unreachable!(); }
-        }
-
         match self.inner.log_file.lock() {
             Ok(file) => file.unlock().unwrap_or_else(|err| { dbg!(err); }),
             Err(err) => { dbg!(err); unreachable!(); }
@@ -614,7 +495,7 @@ fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::E
 }
 
 /// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
-fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
+pub(crate) fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.input(line_data);
     let current_data_hash = hasher.result_str();
