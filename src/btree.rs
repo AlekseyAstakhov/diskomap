@@ -1,7 +1,7 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
-use crate::file_work::load_from_file;
+use crate::file_work::{load_from_file, write_insert_to_log_file};
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -235,7 +235,7 @@ where
         // write all to tmp file
         for (key, value) in map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            crate::file_work::write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
+            write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
         }
 
         drop(tmp_file);
