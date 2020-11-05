@@ -1,7 +1,7 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
-use crate::file_work::{load_from_file, write_insert_to_file};
+use crate::file_work::{load_from_file, write_insert_to_file, create_dirs_to_path_if_not_exist};
 use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
@@ -368,16 +368,4 @@ pub(crate) trait IndexTrait<BTreeKey, BTreeValue> {
     fn on_insert(&self, key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError>;
     /// Updates index when remove operation on map.
     fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError>;
-}
-
-/// Create dirs to path if not exist.
-fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::Error> {
-    if let Some(index) = path_to_file.rfind('/') {
-        let dir_path = &path_to_file[..index];
-        if !std::path::Path::new(dir_path).exists() {
-            std::fs::create_dir_all(&path_to_file[..index])?;
-        }
-    }
-
-    Ok(())
 }

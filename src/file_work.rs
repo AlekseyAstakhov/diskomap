@@ -128,3 +128,15 @@ pub fn write_remove_to_file(key_json: &str, file: &mut File, integrity: &mut Opt
 
     file.write_all(line.as_bytes())
 }
+
+/// Create dirs to path if not exist.
+pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(), std::io::Error> {
+    if let Some(index) = path_to_file.rfind('/') {
+        let dir_path = &path_to_file[..index];
+        if !std::path::Path::new(dir_path).exists() {
+            std::fs::create_dir_all(&path_to_file[..index])?;
+        }
+    }
+
+    Ok(())
+}
