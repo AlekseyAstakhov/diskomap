@@ -2,13 +2,11 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::sync::{Arc, Mutex};
 use std::fs::File;
-use std::io::Write;
-use crc::crc32;
 use std::panic;
 use std::ops::{Deref, DerefMut};
 use crate::Integrity;
-use crate::btree::blockchain_sha256;
 use fs2::FileExt;
+use crate::file_work::{write_insert_to_log_file, write_remove_to_log_file};
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {
@@ -72,54 +70,6 @@ impl Drop for FileWorker {
         }
         self.join_handle.take().map(JoinHandle::join);
     }
-}
-
-pub(crate) fn write_insert_to_log_file(key_val_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
-    -> Result<(), std::io::Error> {
-
-    let mut line = "ins ".to_string() + &key_val_json;
-
-    if let Some(integrity) = integrity {
-        match integrity {
-            Integrity::Sha256Chain(prev_hash) => {
-                let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                line = format!("{} {}", line, sum);
-                *prev_hash = sum;
-            },
-            Integrity::Crc32 => {
-                let crc = crc32::checksum_ieee(line.as_bytes());
-                line = format!("{} {}", line, crc);
-            },
-        }
-    }
-
-    line.push('\n');
-
-    file.write_all(line.as_bytes())
-}
-
-fn write_remove_to_log_file(key_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
-    -> Result<(), std::io::Error> {
-
-    let mut line = "rem ".to_string() + key_json;
-
-    if let Some(integrity) = integrity {
-        match integrity {
-            Integrity::Sha256Chain(prev_hash) => {
-                let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                line = format!("{} {}", line, sum);
-                *prev_hash = sum;
-            },
-            Integrity::Crc32 => {
-                let crc = crc32::checksum_ieee(line.as_bytes());
-                line = format!("{} {}", line, crc);
-            },
-        }
-    }
-
-    line.push('\n');
-
-    file.write_all(line.as_bytes())
 }
 
 fn call_error_callback(callback: &Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>, err: std::io::Error) {

@@ -1,16 +1,15 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
+use crate::file_work::load_from_file;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader};
+use std::fs::OpenOptions;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
-use crc::crc32;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 
@@ -67,7 +66,7 @@ where
         let integrity = Arc::new(Mutex::new(integrity));
 
         // load current map from operations log file
-        let map = match BTree::load_from_file(&mut file, &mut integrity.lock()?.deref_mut()) {
+        let map = match load_from_file(&mut file, &mut integrity.lock()?.deref_mut()) {
             Ok(map) => {
                 map
             }
@@ -215,72 +214,6 @@ where
         Ok(self.len()? == 0)
     }
 
-    // Load from file and process all operations and make actual map.
-    pub fn load_from_file(file: &mut File, integrity: &mut Option<Integrity>) -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError> {
-        let mut map = BTreeMap::new();
-        let mut reader = BufReader::new(file);
-        let mut line = String::with_capacity(150);
-        let mut line_num = 1;
-        while reader.read_line(&mut line)? > 0 {
-            const MIN_LINE_LEN: usize = 4;
-            if line.len() < MIN_LINE_LEN {
-                return Err(BTreeError::FileLineLengthLessThenMinimum { line_num });
-            }
-
-            let line_data = if let Some(integrity) = integrity {
-                let data_index = line.rfind(' ').ok_or(BTreeError::NoExpectedHash { line_num })?;
-                let line_data = &line[..data_index];
-                let hash_data = line[data_index + 1..line.len()].trim_end();
-
-                match integrity {
-                    Integrity::Sha256Chain(hash_of_prev) => {
-                        let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
-                        if sum != hash_data {
-                            return Err(BTreeError::WrongSha256Blockchain { line_num });
-                        }
-                        *hash_of_prev = sum;
-                    },
-                    Integrity::Crc32 => {
-                        let crc = crc32::checksum_ieee(line_data.as_bytes());
-                        if crc.to_string() != hash_data {
-                            return Err(BTreeError::WrongCrc32 { line_num });
-                        }
-                    },
-                }
-                line_data
-            } else {
-                &line[..]
-            };
-
-            match &line_data[..3] {
-                "ins" => match serde_json::from_str(&line_data[4..]) {
-                    Ok((key, val)) => {
-                        map.insert(key, RwLock::new(val));
-                    }
-                    Err(err) => {
-                        return Err(BTreeError::DeserializeJsonError { err, line_num });
-                    }
-                },
-                "rem" => match serde_json::from_str(&line_data[4..]) {
-                    Ok(key) => {
-                        map.remove(&key);
-                    }
-                    Err(err) => {
-                        return Err(BTreeError::DeserializeJsonError { err, line_num });
-                    }
-                },
-                _ => {
-                    return Err(BTreeError::NoLineDefinition { line_num });
-                }
-            }
-
-            line_num += 1;
-            line.clear();
-        }
-
-        Ok(map)
-    }
-
     /// Remove history from log file.
     /// To reduce the size of the log file and speed up loading into RAM.
     /// If you don't need the entire history of all operations.
@@ -302,7 +235,7 @@ where
         // write all to tmp file
         for (key, value) in map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            crate::file_worker::write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
+            crate::file_work::write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
         }
 
         drop(tmp_file);
