@@ -6,7 +6,7 @@ use std::panic;
 use std::ops::{Deref, DerefMut};
 use crate::Integrity;
 use fs2::FileExt;
-use crate::file_work::{write_insert_to_log_file, write_remove_to_log_file};
+use crate::file_work::{write_insert_to_file, write_remove_to_file};
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {
@@ -24,13 +24,13 @@ impl FileWorker {
                 Ok(task) => {
                     match task {
                         FileWorkerTask::WriteInsert { key_val_json, integrity } => {
-                            match write_insert_to_log_file(&key_val_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
+                            match write_insert_to_file(&key_val_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
                                 Ok(()) => {},
                                 Err(err) => call_error_callback(&error_callback, err),
                             }
                         },
                         FileWorkerTask::WriteRemove { key_json, integrity  } => {
-                            match write_remove_to_log_file(&key_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
+                            match write_remove_to_file(&key_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
                                 Ok(()) => {},
                                 Err(err) => call_error_callback(&error_callback, err),
                             }

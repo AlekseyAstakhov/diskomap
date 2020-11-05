@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use serde::de::DeserializeOwned;
 use std::io::Write;
 
-// Load from file and process all operations and make actual map.
+// Load from file all operations and make actual map.
 pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
     -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError>
     where
@@ -79,8 +79,9 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
     Ok(map)
 }
 
-pub fn write_insert_to_log_file(key_val_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
-                                       -> Result<(), std::io::Error> {
+/// Write to file new line about insert operation.
+pub fn write_insert_to_file(key_val_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
+                            -> Result<(), std::io::Error> {
 
     let mut line = "ins ".to_string() + &key_val_json;
 
@@ -103,7 +104,8 @@ pub fn write_insert_to_log_file(key_val_json: &str, file: &mut File, integrity: 
     file.write_all(line.as_bytes())
 }
 
-pub fn write_remove_to_log_file(key_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
+/// Write to file new line about remove operation.
+pub fn write_remove_to_file(key_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
                             -> Result<(), std::io::Error> {
 
     let mut line = "rem ".to_string() + key_json;

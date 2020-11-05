@@ -1,7 +1,7 @@
 use crate::btree_index::BtreeIndex;
 use crate::btree_index::BtreeIndexError;
 use crate::file_worker::FileWorker;
-use crate::file_work::{load_from_file, write_insert_to_log_file};
+use crate::file_work::{load_from_file, write_insert_to_file};
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -37,7 +37,7 @@ struct Inner<Key, Value> {
     /// Map in the RAM.
     map: RwLock<BTreeMap<Key, RwLock<Value>>>,
     /// Path to operations log file.
-    log_file_path: String,
+    file_path: String,
     // For append operations to the operations log file in background thread.
     file_worker: Mutex<FileWorker>,
 
@@ -57,10 +57,10 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(operations_log_file: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
-        create_dirs_to_path_if_not_exist(operations_log_file)?;
+    pub fn open_or_create(file: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
+        create_dirs_to_path_if_not_exist(file)?;
 
-        let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(operations_log_file)?;
+        let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file)?;
         file.lock_exclusive()?;
 
         let integrity = Arc::new(Mutex::new(integrity));
@@ -81,7 +81,7 @@ where
         Ok(BTree {
             inner: Arc::new(Inner {
                 map: RwLock::new(map),
-                log_file_path: operations_log_file.to_string(),
+                file_path: file.to_string(),
                 file_worker: Mutex::new(FileWorker::new(file, on_background_error.clone())),
                 indexes: RwLock::new(Vec::new()),
                 on_background_error: on_background_error,
@@ -223,7 +223,7 @@ where
     pub fn remove_history(&self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
         let map = self.inner.map.read()?;
         let tempdir = tempdir()?;
-        let tmp_file_path = tempdir.path().join(self.inner.log_file_path.deref()).to_str().unwrap_or("").to_string();
+        let tmp_file_path = tempdir.path().join(self.inner.file_path.deref()).to_str().unwrap_or("").to_string();
 
         create_dirs_to_path_if_not_exist(&tmp_file_path)?;
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
@@ -235,15 +235,15 @@ where
         // write all to tmp file
         for (key, value) in map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            write_insert_to_log_file(&key_val_json, &mut tmp_file, &mut integrity)?;
+            write_insert_to_file(&key_val_json, &mut tmp_file, &mut integrity)?;
         }
 
         drop(tmp_file);
 
-        let reaname_res = std::fs::rename(&tmp_file_path, self.inner.log_file_path.deref());
+        let reaname_res = std::fs::rename(&tmp_file_path, self.inner.file_path.deref());
 
         let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
-            .open(self.inner.log_file_path.deref())?;
+            .open(self.inner.file_path.deref())?;
         *file_worker = FileWorker::new(reopened_file, self.inner.on_background_error.clone());
 
         if let Err(err) = reaname_res {
@@ -413,15 +413,15 @@ mod tests {
 
     #[test]
     fn test() -> Result<(), Box<dyn std::error::Error>> {
-        // new log file
-        let log_file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
+        // new file
+        let file = tempdir()?.path().join("test.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&log_file, None)?;
+            let map = BTree::open_or_create(&file, None)?;
             map.insert((), ())?;
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file, None)?;
+            let map = BTree::open_or_create(&file, None)?;
             assert_eq!(Some(()), map.get(&())?);
             map.insert((), ())?;
             assert_eq!(1, map.len()?);
@@ -435,9 +435,9 @@ mod tests {
         }
 
         // new log file
-        let log_file = tempdir()?.path().join("test2.txt").to_str().unwrap().to_string();
+        let file = tempdir()?.path().join("test2.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&log_file, None)?;
+            let map = BTree::open_or_create(&file, None)?;
             map.insert("key 1".to_string(), 1)?;
             map.insert("key 2".to_string(), 2)?;
             map.insert("key 3".to_string(), 3)?;
@@ -458,7 +458,7 @@ mod tests {
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file, None)?;
+            let map = BTree::open_or_create(&file, None)?;
             assert_eq!(5, map.len()?);
             assert_eq!(Some(100), map.get(&"key 1".to_string())?);
             assert_eq!(None, map.get(&"key 4".to_string())?);
@@ -469,7 +469,7 @@ mod tests {
         }
         // after restart
         {
-            let map = BTree::open_or_create(&log_file, None)?;
+            let map = BTree::open_or_create(&file, None)?;
             assert_eq!(4, map.len()?);
             assert_eq!(Some(33), map.get(&"key 3".to_string())?);
             assert_eq!(None, map.get(&"key 1".to_string())?);
