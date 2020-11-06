@@ -26,14 +26,14 @@ pub struct BTree<Key, Value> {
     file_worker: Option<FileWorker>,
 
     /// Created indexes.
-    indexes: Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>,
+    indexes: Vec<Box<dyn IndexTrait<Key, Value>>>,
     /// Mechanism of controlling the integrity of stored data in a log file.
     integrity: Option<Integrity>,
 }
 
 impl<Key, Value: 'static> BTree<Key, Value>
 where
-    Key: Serialize + DeserializeOwned + Ord + Clone + Send + Sync + 'static,
+    Key: Serialize + DeserializeOwned + Ord + Clone + Sync + 'static,
     Value: Serialize + DeserializeOwned + Clone,
 {
     /// Open/create map with 'operations_log_file'.
