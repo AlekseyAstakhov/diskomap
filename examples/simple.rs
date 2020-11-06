@@ -17,6 +17,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("File content:");
     print!("{}", std::fs::read_to_string(file_name)?);
 
-
     Ok(())
 }
