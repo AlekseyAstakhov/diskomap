@@ -53,15 +53,19 @@ impl FileWorker {
     }
 
     /// Write insert operation in the file in the background thread.
-    pub fn write_insert(&self, key_val_json: String, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
+    pub fn write_insert(&self, key_val_json: String, integrity: Arc<Mutex<Option<Integrity>>>) {
         let task = FileWorkerTask::WriteInsert { key_val_json, integrity };
-        self.tasks_sender.send(task).map_err(|_|())
+        if self.tasks_sender.send(task).is_err() {
+            unreachable!()
+        }
     }
 
     /// Write remove operation in the file in the background thread.
-    pub fn write_remove(&self, key_json: String, integrity: Arc<Mutex<Option<Integrity>>>) -> Result<(), ()> {
+    pub fn write_remove(&self, key_json: String, integrity: Arc<Mutex<Option<Integrity>>>) {
         let task = FileWorkerTask::WriteRemove { key_json, integrity };
-        self.tasks_sender.send(task).map_err(|_|())
+        if self.tasks_sender.send(task).is_err() {
+            unreachable!();
+        }
     }
 }
 

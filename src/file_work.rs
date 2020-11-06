@@ -4,13 +4,12 @@ use std::io::{BufRead, BufReader};
 use std::collections::BTreeMap;
 use crc::crc32;
 use crate::btree::BTreeError;
-use std::sync::RwLock;
 use serde::de::DeserializeOwned;
 use std::io::Write;
 
 // Load from file all operations and make actual map.
 pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
-    -> Result<BTreeMap<Key, RwLock<Value>>, BTreeError>
+    -> Result<BTreeMap<Key, Value>, BTreeError>
     where
         Key: std::cmp::Ord + DeserializeOwned,
         Value: DeserializeOwned {
@@ -53,7 +52,7 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
         match &line_data[..3] {
             "ins" => match serde_json::from_str(&line_data[4..]) {
                 Ok((key, val)) => {
-                    map.insert(key, RwLock::new(val));
+                    map.insert(key, val);
                 }
                 Err(err) => {
                     return Err(BTreeError::DeserializeJsonError { err, line_num });

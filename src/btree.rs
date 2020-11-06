@@ -15,24 +15,16 @@ use tempfile::tempdir;
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
 /// for restoring actual data after restart application.
-/// Thread safe and clone-shareable.
-#[derive(Clone)]
 pub struct BTree<Key, Value> {
-    /// Inner data this struct, need for Arc all fields together.
-    inner: Arc<Inner<Key, Value>>,
-}
-
-/// Inner data of 'BTree', need for clone all fields of 'BTree' together.
-struct Inner<Key, Value> {
     /// Map in the RAM.
-    map: RwLock<BTreeMap<Key, RwLock<Value>>>,
+    map: BTreeMap<Key, Value>,
     /// Path to operations log file.
     file_path: String,
     // For append operations to the operations log file in background thread.
-    file_worker: Mutex<FileWorker>,
+    file_worker: Option<FileWorker>,
 
     /// Created indexes.
-    indexes: RwLock<Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>>,
+    indexes: Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>,
     /// Error handler of background thread. It's will call when error of writing to log file.
     on_background_error: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
     /// Mechanism of controlling the integrity of stored data in a log file.
@@ -51,12 +43,14 @@ where
         create_dirs_to_path_if_not_exist(file_path)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
-        file.lock_exclusive()?;
 
         let integrity = Arc::new(Mutex::new(integrity));
+        let mut locked_integrity = integrity.lock()?;
+
+        file.lock_exclusive()?;
 
         // load current map from operations log file
-        let map = match load_from_file(&mut file, &mut integrity.lock()?.deref_mut()) {
+        let map = match load_from_file(&mut file, &mut locked_integrity.deref_mut()) {
             Ok(map) => {
                 map
             }
@@ -68,140 +62,67 @@ where
 
         let on_background_error = Arc::new(Mutex::new(None));
 
+        drop(locked_integrity);
+
         Ok(BTree {
-            inner: Arc::new(Inner {
-                map: RwLock::new(map),
-                file_path: file_path.to_string(),
-                file_worker: Mutex::new(FileWorker::new(file, on_background_error.clone())),
-                indexes: RwLock::new(Vec::new()),
-                on_background_error: on_background_error,
-                integrity,
-            }),
+            map,
+            file_path: file_path.to_string(),
+            file_worker: Some(FileWorker::new(file, on_background_error.clone())),
+            indexes: Vec::new(),
+            on_background_error: on_background_error,
+            integrity,
         })
     }
 
     /// Inserts a key-value pair into the map. This function is used for updating too.
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
-    pub fn insert(&self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
-        let updated_value = match self.inner.map.read()?.get(&key) {
-            // if the value exists, then try to update it
-            Some(cur_value) => {
-                let mut cur_value = cur_value.write()?;
-                let old_value = (*cur_value).clone();
-                *cur_value = value.clone();
-                Some(old_value)
-            }
-            None => {
-                None
-            }
-        };
-
-        let old_value = match updated_value {
-            Some(updated_value) => Some(updated_value),
-            None => {
-                // if the value not exists, then inset new
-                let old = self.inner.map.write()?.insert(key.clone(), RwLock::new(value.clone()));
-                match old {
-                    Some(old) => Some(old.read()?.clone()),
-                    None => None,
-                }
-            }
-        };
+    pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
+        let old_value = self.map.insert(key.clone(), value.clone());
 
         // update in index
-        for index in self.inner.indexes.read()?.iter() {
+        for index in self.indexes.iter() {
             index.on_insert(key.clone(), value.clone(), old_value.clone())?;
         }
 
         // add operation to operations log file
         let key_val_json = serde_json::to_string(&(&key, &value))?;
-        let integrity = self.inner.integrity.clone();
-        self.inner.file_worker.lock()?.write_insert(key_val_json, integrity).unwrap();
+        let integrity = self.integrity.clone();
+
+        if let Some(file_worker) = &self.file_worker {
+            file_worker.write_insert(key_val_json, integrity);
+        } else {
+            unreachable!();
+        }
 
         Ok(old_value)
     }
 
     /// Get value by key from the map in RAM. No writing to the operations log file.
-    pub fn get(&self, key: &Key) -> Result<Option<Value>, BTreeError> {
-        let map = self.inner.map.read()?;
-        if let Some(val_rw) = map.get(key) {
-            return Ok(Some(val_rw.read()?.clone()));
-        }
-
-        Ok(None)
+    pub fn get(&self, key: &Key) -> Option<&Value> {
+        self.map.get(key)
     }
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
-    pub fn remove(&self, key: &Key) -> Result<Option<Value>, BTreeError> {
-        if let Some(old_value) = self.inner.map.write()?.remove(&key) {
-            let value = old_value.read()?;
-
+    pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, BTreeError> {
+        if let Some(old_value) = self.map.remove(&key) {
             // remove from indexes
-            for index in self.inner.indexes.read()?.iter() {
-                index.on_remove(&key, &value)?;
+            for index in self.indexes.iter() {
+                index.on_remove(&key, &old_value)?;
             }
 
             let key_json = serde_json::to_string(&key)?;
-            let integrity = self.inner.integrity.clone();
-            self.inner.file_worker.lock()?.write_remove(key_json, integrity).unwrap();
+            let integrity = self.integrity.clone();
 
-            return Ok(Some(value.clone()));
+            if let Some(file_worker) = &self.file_worker {
+                file_worker.write_remove(key_json, integrity);
+            } else {
+                unreachable!();
+            }
+
+            return Ok(Some(old_value.clone()));
         }
 
         Ok(None)
-    }
-
-    /// Returns `true` if the map in memory contains a value for the specified key.
-    pub fn contains_key(&self, key: &Key) -> Result<bool, BTreeError> {
-        Ok(self.inner.map.read()?.contains_key(key))
-    }
-
-    /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range<R>(&self, range: R) -> Result<Vec<(Key, Value)>, BTreeError>
-    where
-        R: std::ops::RangeBounds<Key>,
-    {
-        let mut key_values = vec![];
-        let map = self.inner.map.read()?;
-        let range = map.range(range);
-        for (key, val) in range {
-            key_values.push((key.clone(), val.read()?.clone()))
-        }
-
-        Ok(key_values)
-    }
-
-    /// Returns cloned keys of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_keys<R>(&self, range: R) -> Result<Vec<Key>, BTreeError>
-    where
-        R: std::ops::RangeBounds<Key>,
-    {
-        Ok(self.inner.map.read()?.range(range).map(|(key, _)| key.clone()).collect())
-    }
-
-    /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_values<R>(&self, range: R) -> Result<Vec<Value>, BTreeError>
-    where
-        R: std::ops::RangeBounds<Key>,
-    {
-        let mut values = vec![];
-        let map = self.inner.map.read()?;
-        let range = map.range(range);
-        for (_, val) in range {
-            values.push(val.read()?.clone())
-        }
-
-        Ok(values)
-    }
-
-    /// Returns the number of elements in the map. No writing to the operations log file.
-    pub fn len(&self) -> Result<usize, BTreeError> {
-        Ok(self.inner.map.read()?.len())
-    }
-
-    /// Returns `true` if the map contains no elements.
-    pub fn is_empty(&self) -> Result<bool, BTreeError> {
-        Ok(self.len()? == 0)
     }
 
     /// Remove history from log file.
@@ -210,37 +131,37 @@ where
     /// All current data state will be presented as 'set' records.
     /// Locks 'Self::map' with shared read access while processing.
     /// If data is big it's take some time because writes all contents to a file.
-    pub fn remove_history(&self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
-        let map = self.inner.map.read()?;
+    pub fn remove_history(&mut self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
         let tempdir = tempdir()?;
-        let tmp_file_path = tempdir.path().join(self.inner.file_path.deref()).to_str().unwrap_or("").to_string();
+        let tmp_file_path = tempdir.path().join(self.file_path.deref()).to_str().unwrap_or("").to_string();
 
         create_dirs_to_path_if_not_exist(&tmp_file_path)?;
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
         let mut integrity = integrity;
 
-        let mut file_worker = self.inner.file_worker.lock()?;
         // here waiting for worker queue
+        drop(self.file_worker.take());
 
         // write all to tmp file
-        for (key, value) in map.iter() {
+        for (key, value) in self.map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
             write_insert_to_file(&key_val_json, &mut tmp_file, &mut integrity)?;
         }
 
         drop(tmp_file);
 
-        let reaname_res = std::fs::rename(&tmp_file_path, self.inner.file_path.deref());
+        let reaname_res = std::fs::rename(&tmp_file_path, &self.file_path);
 
         let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
-            .open(self.inner.file_path.deref())?;
-        *file_worker = FileWorker::new(reopened_file, self.inner.on_background_error.clone());
+            .open(self.file_path.deref())?;
+
+        self.file_worker = Some(FileWorker::new(reopened_file, self.on_background_error.clone()));
 
         if let Err(err) = reaname_res {
             return Err(BTreeError::FileError(err));
         }
 
-        *self.inner.integrity.lock()? = integrity;
+        *self.integrity.lock()? = integrity;
 
         Ok(())
     }
@@ -249,17 +170,15 @@ where
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
-    pub fn create_btree_index<IndexKey, F>(&self, make_index_key_callback: F)
-        -> Result<BtreeIndex<IndexKey, Key, Value>, BtreeIndexError>
+    pub fn create_btree_index<IndexKey, F>(&mut self, make_index_key_callback: F)
+        -> BtreeIndex<IndexKey, Key, Value>
     where
         IndexKey: Clone + Ord + Send + Sync + 'static,
         F: Fn(&Value) -> IndexKey + Send + Sync + 'static,
     {
         let mut index_map: BTreeMap<IndexKey, BTreeSet<Key>> = BTreeMap::new();
 
-        let map = self.inner.map.read()?;
-        for (key, val_rw) in map.iter() {
-            let val = val_rw.read()?;
+        for (key, val) in self.map.iter() {
             let index_key = make_index_key_callback(&val);
             match index_map.get_mut(&index_key) {
                 Some(keys) => {
@@ -272,7 +191,6 @@ where
                 }
             }
         }
-        drop(map); // unlock
 
         let index = BtreeIndex {
             inner: Arc::new(crate::btree_index::Inner {
@@ -281,25 +199,69 @@ where
             }),
         };
 
-        self.inner.indexes.write()?.push(Box::new(index.clone()));
+        self.indexes.push(Box::new(index.clone()));
 
-        Ok(index)
+        index
+    }
+
+    /// Returns reference to inner map.
+    pub fn map(&self) -> &BTreeMap<Key, Value> {
+        &self.map
+    }
+
+    /// Returns the number of elements in the map. No writing to the operations log file.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    /// Returns `true` if the map contains no elements.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns `true` if the map in memory contains a value for the specified key.
+    pub fn contains_key(&self, key: &Key) -> bool {
+        self.map.contains_key(key)
+    }
+
+    /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
+    pub fn range<R>(&self, range: R) -> Result<Vec<(Key, Value)>, BTreeError>
+        where
+            R: std::ops::RangeBounds<Key>,
+    {
+        let mut key_values = vec![];
+        let range = self.map.range(range);
+        for (key, val) in range {
+            key_values.push((key.clone(), val.clone()))
+        }
+
+        Ok(key_values)
+    }
+
+    /// Returns cloned keys of sub-range of elements in the map. No writing to the operations log file.
+    pub fn range_keys<R>(&self, range: R) -> Vec<Key>
+        where
+            R: std::ops::RangeBounds<Key>,
+    {
+        self.map.range(range).map(|(key, _)| key.clone()).collect()
+    }
+
+    /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
+    pub fn range_values<R>(&self, range: R) -> Vec<Value>
+        where
+            R: std::ops::RangeBounds<Key>,
+    {
+        self.map.range(range).map(|(_, val)| val.clone()).collect()
     }
 
     /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
-    pub fn keys(&self) -> Result<Vec<Key>, BTreeError> {
-        Ok(self.inner.map.read()?.keys().cloned().collect())
+    pub fn cloned_keys(&self) -> Vec<Key> {
+        self.map.keys().cloned().collect()
     }
 
     /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
-    pub fn values(&self) -> Result<Vec<Value>, BTreeError> {
-        let mut values = vec![];
-        let map = self.inner.map.read()?;
-        for val in map.values() {
-            values.push(val.read()?.clone());
-        }
-
-        Ok(values)
+    pub fn cloned_values(&self) -> Vec<Value> {
+        self.map.values().map(|val| val.clone()).collect()
     }
 }
 

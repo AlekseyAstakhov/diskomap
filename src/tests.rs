@@ -11,65 +11,65 @@ mod tests {
         // new file
         let file = tempdir()?.path().join("btree_test.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, None)?;
             map.insert((), ())?;
         }
         // after restart
         {
-            let map = BTree::open_or_create(&file, None)?;
-            assert_eq!(Some(()), map.get(&())?);
+            let mut map = BTree::open_or_create(&file, None)?;
+            assert_eq!(Some(&()), map.get(&()));
             map.insert((), ())?;
-            assert_eq!(1, map.len()?);
+            assert_eq!(1, map.len());
             map.insert((), ())?;
-            assert_eq!(1, map.len()?);
+            assert_eq!(1, map.len());
             map.insert((), ())?;
-            assert_eq!(1, map.len()?);
-            assert_eq!(Some(()), map.get(&())?);
+            assert_eq!(1, map.len());
+            assert_eq!(Some(&()), map.get(&()));
             map.remove(&())?;
-            assert_eq!(0, map.len()?);
+            assert_eq!(0, map.len());
         }
 
         // new log file
         let file = tempdir()?.path().join("btree_test2.txt").to_str().unwrap().to_string();
         {
-            let map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, None)?;
             map.insert("key 1".to_string(), 1)?;
             map.insert("key 2".to_string(), 2)?;
             map.insert("key 3".to_string(), 3)?;
             map.insert("key 4".to_string(), 4)?;
             map.insert("key 5".to_string(), 5)?;
-            assert_eq!(5, map.len()?);
-            assert_eq!(Some(3), map.get(&"key 3".to_string())?);
+            assert_eq!(5, map.len());
+            assert_eq!(Some(&3), map.get(&"key 3".to_string()));
             map.remove(&"key 1".to_string())?;
             map.remove(&"key 4".to_string())?;
             map.insert("key 6".to_string(), 6)?;
             map.insert("key 1".to_string(), 100)?;
             map.remove(&"key 2".to_string())?;
             map.insert("key 7".to_string(), 7)?;
-            assert_eq!(map.keys()?, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.values()?, vec![100, 3, 5, 6, 7]);
-            assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string())))?, vec![3, 5, 6]);
-            assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string())))?, vec!["key 3".to_string(), "key 5".to_string()]);
+            assert_eq!(map.cloned_keys(), vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            assert_eq!(map.cloned_values(), vec![100, 3, 5, 6, 7]);
+            assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string()))), vec![3, 5, 6]);
+            assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string()))), vec!["key 3".to_string(), "key 5".to_string()]);
         }
         // after restart
         {
-            let map = BTree::open_or_create(&file, None)?;
-            assert_eq!(5, map.len()?);
-            assert_eq!(Some(100), map.get(&"key 1".to_string())?);
-            assert_eq!(None, map.get(&"key 4".to_string())?);
-            assert_eq!(None, map.get(&"key 2".to_string())?);
+            let mut map = BTree::open_or_create(&file, None)?;
+            assert_eq!(5, map.len());
+            assert_eq!(Some(&100), map.get(&"key 1".to_string()));
+            assert_eq!(None, map.get(&"key 4".to_string()));
+            assert_eq!(None, map.get(&"key 2".to_string()));
             map.insert("key 3".to_string(), 33)?;
-            assert_eq!(Some(33), map.get(&"key 3".to_string())?);
+            assert_eq!(Some(&33), map.get(&"key 3".to_string()));
             map.remove(&"key 1".to_string())?;
         }
         // after restart
         {
             let map = BTree::open_or_create(&file, None)?;
-            assert_eq!(4, map.len()?);
-            assert_eq!(Some(33), map.get(&"key 3".to_string())?);
-            assert_eq!(None, map.get(&"key 1".to_string())?);
-            assert_eq!(map.keys()?, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.values()?, vec![33, 5, 6, 7]);
+            assert_eq!(4, map.len());
+            assert_eq!(Some(&33), map.get(&"key 3".to_string()));
+            assert_eq!(None, map.get(&"key 1".to_string()));
+            assert_eq!(map.cloned_keys(), vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            assert_eq!(map.cloned_values(), vec![33, 5, 6, 7]);
             assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string())))?, vec![("key 5".to_string(), 5)]);
         }
 
@@ -89,8 +89,8 @@ mod tests {
 
         // new log file
         let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
-        let map = crate::BTree::open_or_create(&file, None)?;
-        let user_name_index = map.create_btree_index(|value: &User| value.name.clone())?;
+        let mut map = crate::BTree::open_or_create(&file, None)?;
+        let user_name_index = map.create_btree_index(|value: &User| value.name.clone());
 
         map.insert(0, User { name: "Mary".to_string(), age: 21 })?;
         map.insert(1, User { name: "John".to_string(), age: 37 })?;
@@ -130,7 +130,7 @@ mod tests {
         use std::fs::OpenOptions;
 
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let map = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        let mut map = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -139,7 +139,7 @@ mod tests {
         let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\n";
         assert_eq!(file_content, expected_content);
 
-        let map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        let mut map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -174,7 +174,7 @@ mod tests {
         let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e";
 
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let map = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        let mut map = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -187,7 +187,7 @@ mod tests {
 
         assert_eq!(file_content, expected);
 
-        let map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        let mut map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
