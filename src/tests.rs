@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::ops::Bound::{Excluded, Included};
     use tempfile::tempdir;
     use crate::BTree;
     use std::io::Write;
@@ -48,8 +47,6 @@ mod tests {
             map.insert("key 7".to_string(), 7)?;
             assert_eq!(map.cloned_keys(), vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.cloned_values(), vec![100, 3, 5, 6, 7]);
-            assert_eq!(map.range_values((Included(&"key 3".to_string()), Included(&"key 6".to_string()))), vec![3, 5, 6]);
-            assert_eq!(map.range_keys((Included(&"key 3".to_string()), Included(&"key 5".to_string()))), vec!["key 3".to_string(), "key 5".to_string()]);
         }
         // after restart
         {
@@ -70,7 +67,6 @@ mod tests {
             assert_eq!(None, map.get(&"key 1".to_string()));
             assert_eq!(map.cloned_keys(), vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
             assert_eq!(map.cloned_values(), vec![33, 5, 6, 7]);
-            assert_eq!(map.range((Excluded(&"key 3".to_string()), Excluded(&"key 6".to_string())))?, vec![("key 5".to_string(), 5)]);
         }
 
         Ok(())

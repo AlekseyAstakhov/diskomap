@@ -170,36 +170,6 @@ where
         self.map.contains_key(key)
     }
 
-    /// Returns cloned keys with values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range<R>(&self, range: R) -> Result<Vec<(Key, Value)>, BTreeError>
-        where
-            R: std::ops::RangeBounds<Key>,
-    {
-        let mut key_values = vec![];
-        let range = self.map.range(range);
-        for (key, val) in range {
-            key_values.push((key.clone(), val.clone()))
-        }
-
-        Ok(key_values)
-    }
-
-    /// Returns cloned keys of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_keys<R>(&self, range: R) -> Vec<Key>
-        where
-            R: std::ops::RangeBounds<Key>,
-    {
-        self.map.range(range).map(|(key, _)| key.clone()).collect()
-    }
-
-    /// Returns cloned values of sub-range of elements in the map. No writing to the operations log file.
-    pub fn range_values<R>(&self, range: R) -> Vec<Value>
-        where
-            R: std::ops::RangeBounds<Key>,
-    {
-        self.map.range(range).map(|(_, val)| val.clone()).collect()
-    }
-
     /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
     pub fn cloned_keys(&self) -> Vec<Key> {
         self.map.keys().cloned().collect()
