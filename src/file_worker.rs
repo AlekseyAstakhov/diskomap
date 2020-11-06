@@ -1,5 +1,5 @@
 use crate::integrity::Integrity;
-use crate::file_work::{write_insert_to_file, write_remove_to_file};
+use crate::file_work::{ins_file_line, rem_file_line};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::sync::{Arc, Mutex};
@@ -7,6 +7,7 @@ use std::fs::File;
 use std::panic;
 use std::ops::{Deref, DerefMut};
 use fs2::FileExt;
+use std::io::Write;
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {
@@ -24,15 +25,15 @@ impl FileWorker {
                 Ok(task) => {
                     match task {
                         FileWorkerTask::WriteInsert { key_val_json, integrity } => {
-                            match write_insert_to_file(&key_val_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
-                                Ok(()) => {},
-                                Err(err) => call_error_callback(&error_callback, err),
+                            let line = ins_file_line(&key_val_json, &mut integrity.lock().unwrap().deref_mut());
+                            if let Err(err) = file.write_all(line.as_bytes()) {
+                                call_error_callback(&error_callback, err);
                             }
                         },
                         FileWorkerTask::WriteRemove { key_json, integrity  } => {
-                            match write_remove_to_file(&key_json, &mut file, &mut integrity.lock().unwrap().deref_mut()) {
-                                Ok(()) => {},
-                                Err(err) => call_error_callback(&error_callback, err),
+                            let line = rem_file_line(&key_json, &mut integrity.lock().unwrap().deref_mut());
+                            if let Err(err) = file.write_all(line.as_bytes()) {
+                                call_error_callback(&error_callback, err);
                             }
                         },
                         FileWorkerTask::Stop => {

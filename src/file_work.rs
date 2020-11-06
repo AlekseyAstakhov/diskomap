@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use crc::crc32;
 use crate::btree::BTreeError;
 use serde::de::DeserializeOwned;
-use std::io::Write;
 
 // Load from file all operations and make actual map.
 pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
@@ -78,10 +77,8 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
     Ok(map)
 }
 
-/// Write to file new line about insert operation.
-pub fn write_insert_to_file(key_val_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
-                            -> Result<(), std::io::Error> {
-
+/// Make line with insert operation for write to file.
+pub fn ins_file_line(key_val_json: &str, integrity: &mut Option<Integrity>) -> String {
     let mut line = "ins ".to_string() + &key_val_json;
 
     if let Some(integrity) = integrity {
@@ -99,13 +96,11 @@ pub fn write_insert_to_file(key_val_json: &str, file: &mut File, integrity: &mut
     }
 
     line.push('\n');
-
-    file.write_all(line.as_bytes())
+    line
 }
 
-/// Write to file new line about remove operation.
-pub fn write_remove_to_file(key_json: &str, file: &mut File, integrity: &mut Option<Integrity>)
-                            -> Result<(), std::io::Error> {
+/// Make line with remove operation for write to file.
+pub fn rem_file_line(key_json: &str, integrity: &mut Option<Integrity>) -> String {
 
     let mut line = "rem ".to_string() + key_json;
 
@@ -124,8 +119,7 @@ pub fn write_remove_to_file(key_json: &str, file: &mut File, integrity: &mut Opt
     }
 
     line.push('\n');
-
-    file.write_all(line.as_bytes())
+    line
 }
 
 /// Create dirs to path if not exist.

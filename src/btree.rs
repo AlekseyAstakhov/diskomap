@@ -1,7 +1,7 @@
 use crate::index::{IndexTrait, BtreeIndexError};
 use crate::btree_index::BtreeIndex;
 use crate::file_worker::FileWorker;
-use crate::file_work::{load_from_file, write_insert_to_file, create_dirs_to_path_if_not_exist};
+use crate::file_work::{load_from_file, ins_file_line, create_dirs_to_path_if_not_exist};
 use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
@@ -11,6 +11,7 @@ use std::fs::OpenOptions;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
+use std::io::Write;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -145,7 +146,8 @@ where
         // write all to tmp file
         for (key, value) in self.map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            write_insert_to_file(&key_val_json, &mut tmp_file, &mut integrity)?;
+            let line = ins_file_line(&key_val_json, &mut integrity);
+            tmp_file.write_all(line.as_bytes())?;
         }
 
         drop(tmp_file);
