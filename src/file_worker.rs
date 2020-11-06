@@ -1,11 +1,9 @@
-use crate::integrity::Integrity;
-use crate::file_work::{ins_file_line, rem_file_line};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::panic;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use fs2::FileExt;
 use std::io::Write;
 
@@ -24,15 +22,8 @@ impl FileWorker {
             match task_receiver.recv() {
                 Ok(task) => {
                     match task {
-                        FileWorkerTask::WriteInsert { key_val_json, integrity } => {
-                            let line = ins_file_line(&key_val_json, &mut integrity.lock().unwrap().deref_mut());
-                            if let Err(err) = file.write_all(line.as_bytes()) {
-                                call_error_callback(&error_callback, err);
-                            }
-                        },
-                        FileWorkerTask::WriteRemove { key_json, integrity  } => {
-                            let line = rem_file_line(&key_json, &mut integrity.lock().unwrap().deref_mut());
-                            if let Err(err) = file.write_all(line.as_bytes()) {
+                        FileWorkerTask::Write(data) => {
+                            if let Err(err) = file.write_all(data.as_bytes()) {
                                 call_error_callback(&error_callback, err);
                             }
                         },
@@ -54,18 +45,10 @@ impl FileWorker {
     }
 
     /// Write insert operation in the file in the background thread.
-    pub fn write_insert(&self, key_val_json: String, integrity: Arc<Mutex<Option<Integrity>>>) {
-        let task = FileWorkerTask::WriteInsert { key_val_json, integrity };
+    pub fn write(&self, data: String) {
+        let task = FileWorkerTask::Write(data);
         if self.tasks_sender.send(task).is_err() {
             unreachable!()
-        }
-    }
-
-    /// Write remove operation in the file in the background thread.
-    pub fn write_remove(&self, key_json: String, integrity: Arc<Mutex<Option<Integrity>>>) {
-        let task = FileWorkerTask::WriteRemove { key_json, integrity };
-        if self.tasks_sender.send(task).is_err() {
-            unreachable!();
         }
     }
 }
@@ -102,16 +85,8 @@ fn call_error_callback(callback: &Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + 
 
 /// Task for send to worker thread.
 enum FileWorkerTask {
-    /// Write insert operation in the file in the background thread.
-    WriteInsert {
-        key_val_json: String,
-        integrity: Arc<Mutex<Option<Integrity>>>,
-    },
-    /// Write remove operation in the file in the background thread.
-    WriteRemove {
-        key_json: String,
-        integrity: Arc<Mutex<Option<Integrity>>>,
-    },
+    /// Write operation to the file in the background thread.
+    Write(String),
     /// Stop worker
     Stop,
 }

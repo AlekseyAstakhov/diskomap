@@ -78,7 +78,7 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
 }
 
 /// Make line with insert operation for write to file.
-pub fn ins_file_line(key_val_json: &str, integrity: &mut Option<Integrity>) -> String {
+pub fn file_line_of_insert(key_val_json: &str, integrity: &mut Option<Integrity>) -> String {
     let mut line = "ins ".to_string() + &key_val_json;
 
     if let Some(integrity) = integrity {
@@ -100,7 +100,7 @@ pub fn ins_file_line(key_val_json: &str, integrity: &mut Option<Integrity>) -> S
 }
 
 /// Make line with remove operation for write to file.
-pub fn rem_file_line(key_json: &str, integrity: &mut Option<Integrity>) -> String {
+pub fn file_line_of_remove(key_json: &str, integrity: &mut Option<Integrity>) -> String {
 
     let mut line = "rem ".to_string() + key_json;
 

@@ -1,14 +1,13 @@
 use crate::index::{IndexTrait, BtreeIndexError};
 use crate::btree_index::BtreeIndex;
 use crate::file_worker::FileWorker;
-use crate::file_work::{load_from_file, ins_file_line, create_dirs_to_path_if_not_exist};
+use crate::file_work::{load_from_file, file_line_of_insert, file_line_of_remove, create_dirs_to_path_if_not_exist};
 use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
-use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex, RwLock};
 use tempfile::tempdir;
 use std::io::Write;
@@ -29,7 +28,7 @@ pub struct BTree<Key, Value> {
     /// Error handler of background thread. It's will call when error of writing to log file.
     on_background_error: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
     /// Mechanism of controlling the integrity of stored data in a log file.
-    integrity: Arc<Mutex<Option<Integrity>>>,
+    integrity: Option<Integrity>,
 }
 
 impl<Key, Value: 'static> BTree<Key, Value>
@@ -40,18 +39,15 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(file_path: &str, integrity: Option<Integrity>) -> Result<Self, BTreeError> {
+    pub fn open_or_create(file_path: &str, mut integrity: Option<Integrity>) -> Result<Self, BTreeError> {
         create_dirs_to_path_if_not_exist(file_path)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
 
-        let integrity = Arc::new(Mutex::new(integrity));
-        let mut locked_integrity = integrity.lock()?;
-
         file.lock_exclusive()?;
 
         // load current map from operations log file
-        let map = match load_from_file(&mut file, &mut locked_integrity.deref_mut()) {
+        let map = match load_from_file(&mut file, &mut integrity) {
             Ok(map) => {
                 map
             }
@@ -62,8 +58,6 @@ where
         };
 
         let on_background_error = Arc::new(Mutex::new(None));
-
-        drop(locked_integrity);
 
         Ok(BTree {
             map,
@@ -87,10 +81,10 @@ where
 
         // add operation to operations log file
         let key_val_json = serde_json::to_string(&(&key, &value))?;
-        let integrity = self.integrity.clone();
 
         if let Some(file_worker) = &self.file_worker {
-            file_worker.write_insert(key_val_json, integrity);
+            let line = file_line_of_insert(&key_val_json, &mut self.integrity);
+            file_worker.write(line);
         } else {
             unreachable!();
         }
@@ -112,10 +106,10 @@ where
             }
 
             let key_json = serde_json::to_string(&key)?;
-            let integrity = self.integrity.clone();
 
             if let Some(file_worker) = &self.file_worker {
-                file_worker.write_remove(key_json, integrity);
+                let line = file_line_of_remove(&key_json, &mut self.integrity);
+                file_worker.write(line);
             } else {
                 unreachable!();
             }
@@ -134,7 +128,7 @@ where
     /// If data is big it's take some time because writes all contents to a file.
     pub fn remove_history(&mut self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
         let tempdir = tempdir()?;
-        let tmp_file_path = tempdir.path().join(self.file_path.deref()).to_str().unwrap_or("").to_string();
+        let tmp_file_path = tempdir.path().join(self.file_path.as_str()).to_str().unwrap_or("").to_string();
 
         create_dirs_to_path_if_not_exist(&tmp_file_path)?;
         let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
@@ -146,7 +140,7 @@ where
         // write all to tmp file
         for (key, value) in self.map.iter() {
             let key_val_json = serde_json::to_string(&(&key, &value))?;
-            let line = ins_file_line(&key_val_json, &mut integrity);
+            let line = file_line_of_insert(&key_val_json, &mut integrity);
             tmp_file.write_all(line.as_bytes())?;
         }
 
@@ -155,7 +149,7 @@ where
         let reaname_res = std::fs::rename(&tmp_file_path, &self.file_path);
 
         let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
-            .open(self.file_path.deref())?;
+            .open(self.file_path.as_str())?;
 
         self.file_worker = Some(FileWorker::new(reopened_file, self.on_background_error.clone()));
 
@@ -163,7 +157,7 @@ where
             return Err(BTreeError::FileError(err));
         }
 
-        *self.integrity.lock()? = integrity;
+        self.integrity = integrity;
 
         Ok(())
     }
