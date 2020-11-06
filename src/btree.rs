@@ -200,8 +200,6 @@ pub enum BTreeError {
     NoLineDefinition { line_num: usize, },
     /// Json error with line number in operations log file.
     JsonSerializeError(serde_json::Error),
-    /// Lock error.
-    PoisonError,
     /// Errors when working with the indexes.
     IndexError,
 }
@@ -217,14 +215,6 @@ impl From<serde_json::error::Error> for BTreeError {
         BTreeError::JsonSerializeError(err)
     }
 }
-
-// For op-?, "auto" type conversion.
-impl<T> From<std::sync::PoisonError<T>> for BTreeError {
-    fn from(_: std::sync::PoisonError<T>) -> Self {
-        BTreeError::PoisonError
-    }
-}
-
 impl From<BtreeIndexError> for BTreeError {
     fn from(_: BtreeIndexError) -> Self {
         BTreeError::IndexError
