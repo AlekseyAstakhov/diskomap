@@ -1,7 +1,13 @@
 use crate::index::{IndexTrait, BtreeIndexError};
 use crate::btree_index::BtreeIndex;
 use crate::file_worker::FileWorker;
-use crate::file_work::{load_from_file, file_line_of_insert, file_line_of_remove, create_dirs_to_path_if_not_exist};
+use crate::file_work::{
+    load_from_file,
+    file_line_of_insert,
+    file_line_of_remove,
+    create_dirs_to_path_if_not_exist,
+    LoadFileError
+};
 use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
@@ -47,7 +53,7 @@ where
             }
             Err(err) => {
                 file.unlock()?;
-                return Err(err);
+                return Err(BTreeError::LoadFileError(err));
             }
         };
 
@@ -184,20 +190,10 @@ where
 /// Errors when working with BTree.
 #[derive(Debug)]
 pub enum BTreeError {
+    /// When load file.
+    LoadFileError(LoadFileError),
     /// Error of working with file.
     FileError(std::io::Error),
-    /// There is no expected checksum or hash in the log file line when integrity used.
-    NoExpectedHash { line_num: usize, },
-    /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
-    WrongSha256Chain { line_num: usize, },
-    /// Wrong crc32 of log file line data when crc32 integrity used.
-    WrongCrc32 { line_num: usize, },
-    /// Json error with line number in operations log file.
-    DeserializeJsonError { err: serde_json::Error, line_num: usize, },
-    /// When line length in operations log file less then need.
-    FileLineLengthLessThenMinimum { line_num: usize, },
-    /// Line in operations log file no contains operation name as "ins" or "rem".
-    NoLineDefinition { line_num: usize, },
     /// Json error with line number in operations log file.
     JsonSerializeError(serde_json::Error),
     /// Errors when working with the indexes.

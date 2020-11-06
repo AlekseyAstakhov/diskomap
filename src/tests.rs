@@ -4,6 +4,7 @@ mod tests {
     use crate::BTree;
     use std::io::Write;
     use crate::btree::BTreeError;
+    use crate::file_work::LoadFileError;
 
     #[test]
     fn common() -> Result<(), Box<dyn std::error::Error>> {
@@ -150,9 +151,11 @@ mod tests {
         let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Crc32));
         let mut crc_is_correct = true;
         if let Err(res) = res {
-            if let BTreeError::WrongCrc32 { line_num } = res {
-                if line_num == 2 {
-                    crc_is_correct = false;
+            if let BTreeError::LoadFileError(err) = res {
+                if let LoadFileError::WrongCrc32 { line_num } = err {
+                        if line_num == 2 {
+                        crc_is_correct = false;
+                    }
                 }
             }
         }
@@ -205,9 +208,11 @@ mod tests {
         let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())));
         let mut crc_is_correct = true;
         if let Err(res) = res {
-            if let BTreeError::WrongSha256Chain { line_num } = res {
-                if line_num == 2 {
-                    crc_is_correct = false;
+            if let BTreeError::LoadFileError(err) = res {
+                if let LoadFileError::WrongSha256Chain { line_num } = err {
+                    if line_num == 2 {
+                        crc_is_correct = false;
+                    }
                 }
             }
         }

@@ -3,12 +3,11 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::collections::BTreeMap;
 use crc::crc32;
-use crate::btree::BTreeError;
 use serde::de::DeserializeOwned;
 
-// Load from file all operations and make actual map.
+/// Load from file all operations and make actual map.
 pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
-    -> Result<BTreeMap<Key, Value>, BTreeError>
+    -> Result<BTreeMap<Key, Value>, LoadFileError>
     where
         Key: std::cmp::Ord + DeserializeOwned,
         Value: DeserializeOwned {
@@ -20,11 +19,11 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
     while reader.read_line(&mut line)? > 0 {
         const MIN_LINE_LEN: usize = 4;
         if line.len() < MIN_LINE_LEN {
-            return Err(BTreeError::FileLineLengthLessThenMinimum { line_num });
+            return Err(LoadFileError::FileLineLengthLessThenMinimum { line_num });
         }
 
         let line_data = if let Some(integrity) = integrity {
-            let data_index = line.rfind(' ').ok_or(BTreeError::NoExpectedHash { line_num })?;
+            let data_index = line.rfind(' ').ok_or(LoadFileError::NoExpectedHash { line_num })?;
             let line_data = &line[..data_index];
             let hash_data = line[data_index + 1..line.len()].trim_end();
 
@@ -32,14 +31,14 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
                 Integrity::Sha256Chain(hash_of_prev) => {
                     let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
                     if sum != hash_data {
-                        return Err(BTreeError::WrongSha256Chain { line_num });
+                        return Err(LoadFileError::WrongSha256Chain { line_num });
                     }
                     *hash_of_prev = sum;
                 },
                 Integrity::Crc32 => {
                     let crc = crc32::checksum_ieee(line_data.as_bytes());
                     if crc.to_string() != hash_data {
-                        return Err(BTreeError::WrongCrc32 { line_num });
+                        return Err(LoadFileError::WrongCrc32 { line_num });
                     }
                 },
             }
@@ -54,7 +53,7 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
                     map.insert(key, val);
                 }
                 Err(err) => {
-                    return Err(BTreeError::DeserializeJsonError { err, line_num });
+                    return Err(LoadFileError::DeserializeJsonError { err, line_num });
                 }
             },
             "rem" => match serde_json::from_str(&line_data[4..]) {
@@ -62,11 +61,11 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
                     map.remove(&key);
                 }
                 Err(err) => {
-                    return Err(BTreeError::DeserializeJsonError { err, line_num });
+                    return Err(LoadFileError::DeserializeJsonError { err, line_num });
                 }
             },
             _ => {
-                return Err(BTreeError::NoLineDefinition { line_num });
+                return Err(LoadFileError::NoLineDefinition { line_num });
             }
         }
 
@@ -75,6 +74,25 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
     }
 
     Ok(map)
+}
+
+/// Possible errors of 'load_from_file'.
+#[derive(Debug)]
+pub enum LoadFileError {
+    /// When line length in operations log file less then need.
+    FileLineLengthLessThenMinimum { line_num: usize, },
+    /// Read file error.
+    ReadFileError(std::io::Error),
+    /// There is no expected checksum or hash in the log file line when integrity used.
+    NoExpectedHash { line_num: usize },
+    /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
+    WrongSha256Chain { line_num: usize, },
+    /// Wrong crc32 of log file line data when crc32 integrity used.
+    WrongCrc32 { line_num: usize, },
+    /// Json error with line number in operations log file.
+    DeserializeJsonError { err: serde_json::Error, line_num: usize, },
+    /// Line in operations log file no contains operation name as "ins" or "rem".
+    NoLineDefinition { line_num: usize, },
 }
 
 /// Make line with insert operation for write to file.
@@ -132,4 +150,10 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
     }
 
     Ok(())
+}
+
+impl From<std::io::Error> for LoadFileError {
+    fn from(err: std::io::Error) -> Self {
+        LoadFileError::ReadFileError(err)
+    }
 }
