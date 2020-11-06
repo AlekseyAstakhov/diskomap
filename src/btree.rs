@@ -33,7 +33,7 @@ pub struct BTree<Key, Value> {
 
 impl<Key, Value: 'static> BTree<Key, Value>
 where
-    Key: Serialize + DeserializeOwned + Ord + Clone + Sync + 'static,
+    Key: Serialize + DeserializeOwned + Ord + Clone + 'static,
     Value: Serialize + DeserializeOwned + Clone,
 {
     /// Open/create map with 'operations_log_file'.
