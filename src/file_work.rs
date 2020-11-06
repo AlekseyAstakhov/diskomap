@@ -119,7 +119,6 @@ pub fn file_line_of_insert(key_val_json: &str, integrity: &mut Option<Integrity>
 
 /// Make line with remove operation for write to file.
 pub fn file_line_of_remove(key_json: &str, integrity: &mut Option<Integrity>) -> String {
-
     let mut line = "rem ".to_string() + key_json;
 
     if let Some(integrity) = integrity {
