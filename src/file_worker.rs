@@ -1,9 +1,7 @@
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
-use std::sync::{Arc, Mutex};
 use std::fs::File;
 use std::panic;
-use std::ops::Deref;
 use fs2::FileExt;
 use std::io::Write;
 
@@ -15,7 +13,7 @@ pub(crate) struct FileWorker {
 
 impl FileWorker {
     /// Constructs 'FileWorker'. 'file' is opened and exclusive locked file.
-    pub fn new(mut file: File, error_callback: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>) -> Self {
+    pub fn new(mut file: File, error_callback: Option<Box<dyn Fn(std::io::Error) + Send>>) -> Self {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
@@ -62,23 +60,17 @@ impl Drop for FileWorker {
     }
 }
 
-fn call_error_callback(callback: &Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>, err: std::io::Error) {
-    match callback.lock() {
-        Ok(hook) => match hook.deref() {
-            Some(hook) => {
-                if let Err(err) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                    hook(err);
-                })) {
-                    dbg!(format!("panic in background error hook function {:?}", &err));
-                }
+fn call_error_callback(callback: &Option<Box<dyn Fn(std::io::Error) + Send>>, err: std::io::Error) {
+    match callback {
+        Some(callback) => {
+            if let Err(err) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                callback(err);
+            })) {
+                dbg!(format!("panic in background error hook function {:?}", &err));
             }
-            None => {
-                dbg!(&err);
-            }
-        },
-        Err(err) => {
-            dbg!(err);
-            unreachable!();
+        }
+        None => {
+            dbg!(&err);
         }
     }
 }

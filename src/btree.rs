@@ -8,9 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
-use std::sync::{Arc, Mutex, RwLock};
-use tempfile::tempdir;
-use std::io::Write;
+use std::sync::{Arc, RwLock};
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -18,15 +16,11 @@ use std::io::Write;
 pub struct BTree<Key, Value> {
     /// Map in the RAM.
     map: BTreeMap<Key, Value>,
-    /// Path to operations log file.
-    file_path: String,
     // For append operations to the operations log file in background thread.
     file_worker: Option<FileWorker>,
 
     /// Created indexes.
     indexes: Vec<Box<dyn IndexTrait<Key, Value> + Send + Sync>>,
-    /// Error handler of background thread. It's will call when error of writing to log file.
-    on_background_error: Arc<Mutex<Option<Box<dyn Fn(std::io::Error) + Send>>>>,
     /// Mechanism of controlling the integrity of stored data in a log file.
     integrity: Option<Integrity>,
 }
@@ -57,14 +51,12 @@ where
             }
         };
 
-        let on_background_error = Arc::new(Mutex::new(None));
+        let on_background_error = None;
 
         Ok(BTree {
             map,
-            file_path: file_path.to_string(),
-            file_worker: Some(FileWorker::new(file, on_background_error.clone())),
+            file_worker: Some(FileWorker::new(file, on_background_error)),
             indexes: Vec::new(),
-            on_background_error: on_background_error,
             integrity,
         })
     }
@@ -118,48 +110,6 @@ where
         }
 
         Ok(None)
-    }
-
-    /// Remove history from log file.
-    /// To reduce the size of the log file and speed up loading into RAM.
-    /// If you don't need the entire history of all operations.
-    /// All current data state will be presented as 'set' records.
-    /// Locks 'Self::map' with shared read access while processing.
-    /// If data is big it's take some time because writes all contents to a file.
-    pub fn remove_history(&mut self, integrity: Option<Integrity>) -> Result<(), BTreeError> {
-        let tempdir = tempdir()?;
-        let tmp_file_path = tempdir.path().join(self.file_path.as_str()).to_str().unwrap_or("").to_string();
-
-        create_dirs_to_path_if_not_exist(&tmp_file_path)?;
-        let mut tmp_file = OpenOptions::new().read(true).write(true).append(true).create(true).open(&tmp_file_path)?;
-        let mut integrity = integrity;
-
-        // here waiting for worker queue
-        drop(self.file_worker.take());
-
-        // write all to tmp file
-        for (key, value) in self.map.iter() {
-            let key_val_json = serde_json::to_string(&(&key, &value))?;
-            let line = file_line_of_insert(&key_val_json, &mut integrity);
-            tmp_file.write_all(line.as_bytes())?;
-        }
-
-        drop(tmp_file);
-
-        let reaname_res = std::fs::rename(&tmp_file_path, &self.file_path);
-
-        let reopened_file = OpenOptions::new().create(true).read(true).write(true).append(true)
-            .open(self.file_path.as_str())?;
-
-        self.file_worker = Some(FileWorker::new(reopened_file, self.on_background_error.clone()));
-
-        if let Err(err) = reaname_res {
-            return Err(BTreeError::FileError(err));
-        }
-
-        self.integrity = integrity;
-
-        Ok(())
     }
 
     /// Create custom index by value.
