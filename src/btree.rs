@@ -1,4 +1,4 @@
-use crate::index::{IndexTrait, BtreeIndexError};
+use crate::index::IndexTrait;
 use crate::btree_index::BtreeIndex;
 use crate::file_worker::FileWorker;
 use crate::file_work::{
@@ -69,12 +69,12 @@ where
 
     /// Inserts a key-value pair into the map. This function is used for updating too.
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
-    pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, BTreeError> {
+    pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
         let old_value = self.map.insert(key.clone(), value.clone());
 
         // update in index
         for index in self.indexes.iter() {
-            index.on_insert(key.clone(), value.clone(), old_value.clone())?;
+            index.on_insert(key.clone(), value.clone(), old_value.clone());
         }
 
         // add operation to operations log file
@@ -96,11 +96,11 @@ where
     }
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
-    pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, BTreeError> {
+    pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
         if let Some(old_value) = self.map.remove(&key) {
             // remove from indexes
             for index in self.indexes.iter() {
-                index.on_remove(&key, &old_value)?;
+                index.on_remove(&key, &old_value);
             }
 
             let key_json = serde_json::to_string(&key)?;
@@ -194,26 +194,11 @@ pub enum BTreeError {
     LoadFileError(LoadFileError),
     /// Error of working with file.
     FileError(std::io::Error),
-    /// Json error with line number in operations log file.
-    JsonSerializeError(serde_json::Error),
-    /// Errors when working with the indexes.
-    IndexError,
 }
 
 impl From<std::io::Error> for BTreeError {
     fn from(err: std::io::Error) -> Self {
         BTreeError::FileError(err)
-    }
-}
-
-impl From<serde_json::error::Error> for BTreeError {
-    fn from(err: serde_json::error::Error) -> Self {
-        BTreeError::JsonSerializeError(err)
-    }
-}
-impl From<BtreeIndexError> for BTreeError {
-    fn from(_: BtreeIndexError) -> Self {
-        BTreeError::IndexError
     }
 }
 

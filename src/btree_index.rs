@@ -1,4 +1,4 @@
-use crate::index::{IndexTrait, BtreeIndexError};
+use crate::index::IndexTrait;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, RwLock};
 
@@ -16,23 +16,23 @@ pub struct Inner<IndexKey: Ord, BTreeKey, BTreeValue> {
 
 impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, BTreeValue> {
     /// BTreeMap keys by custom index. Empty vec if no so index.
-    pub fn get(&self, key: &IndexKey) -> Result<Vec<BTreeKey>, BtreeIndexError> {
+    pub fn get(&self, key: &IndexKey) -> Vec<BTreeKey> {
         let mut vec = vec![];
-        let map = self.inner.map.read()?;
+        let map = self.inner.map.read().unwrap();
         if let Some(btree_keys) = map.get(key) {
             vec = (*btree_keys).iter().cloned().collect();
         }
 
-        Ok(vec)
+        vec
     }
 
-    pub fn len(&self) -> Result<usize, BtreeIndexError> {
-        Ok(self.inner.map.read()?.len())
+    pub fn len(&self) -> usize {
+        self.inner.map.read().unwrap().len()
     }
 
 
-    pub fn is_empty(&self) -> Result<bool, BtreeIndexError> {
-        Ok(self.len()? == 0)
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -42,16 +42,16 @@ where
     BTreeKey: Ord,
 {
     /// Updates index when insert operation on 'BTree'.
-    fn on_insert(&self, btree_key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) -> Result<(), BtreeIndexError> {
-        let mut map = self.inner.map.write()?;
+    fn on_insert(&self, btree_key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) {
+        let mut map = self.inner.map.write().unwrap();
         if let Some(old_value) = old_value {
-            let old_value_index_key = self.inner.make_index_key_callback.read()?(&old_value);
+            let old_value_index_key = self.inner.make_index_key_callback.read().unwrap()(&old_value);
             if let Some(keys) = map.get_mut(&old_value_index_key) {
                 keys.remove(&btree_key);
             }
         }
 
-        let index_key = self.inner.make_index_key_callback.read()?(&value);
+        let index_key = self.inner.make_index_key_callback.read().unwrap()(&value);
         match map.get_mut(&index_key) {
             Some(keys) => {
                 keys.insert(btree_key);
@@ -62,17 +62,13 @@ where
                 map.insert(index_key, set);
             }
         }
-
-        Ok(())
     }
 
     /// Updates index when remove operation on 'BTree'.
-    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) -> Result<(), BtreeIndexError> {
-        let index_key = self.inner.make_index_key_callback.read()?(&value);
-        if let Some(keys) = self.inner.map.write()?.get_mut(&index_key) {
+    fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) {
+        let index_key = self.inner.make_index_key_callback.read().unwrap()(&value);
+        if let Some(keys) = self.inner.map.write().unwrap().get_mut(&index_key) {
             keys.remove(key);
         }
-
-        Ok(())
     }
 }
