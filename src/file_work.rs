@@ -81,8 +81,8 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
 pub enum LoadFileError {
     /// When line length in operations log file less then need.
     FileLineLengthLessThenMinimum { line_num: usize, },
-    /// Read file error.
-    ReadFileError(std::io::Error),
+    /// Open, create or read file error.
+    FileError(std::io::Error),
     /// There is no expected checksum or hash in the log file line when integrity used.
     NoExpectedHash { line_num: usize },
     /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
@@ -153,7 +153,7 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
 
 impl From<std::io::Error> for LoadFileError {
     fn from(err: std::io::Error) -> Self {
-        LoadFileError::ReadFileError(err)
+        LoadFileError::FileError(err)
     }
 }
 
