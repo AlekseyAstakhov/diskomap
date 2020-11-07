@@ -39,7 +39,7 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(file_path: &str, mut integrity: Option<Integrity>) -> Result<Self, BTreeError> {
+    pub fn open_or_create(file_path: &str, mut integrity: Option<Integrity>) -> Result<Self, LoadFileError> {
         create_dirs_to_path_if_not_exist(file_path)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
@@ -53,7 +53,7 @@ where
             }
             Err(err) => {
                 file.unlock()?;
-                return Err(BTreeError::LoadFileError(err));
+                return Err(err);
             }
         };
 
@@ -186,26 +186,3 @@ where
         self.map.values().map(|val| val.clone()).collect()
     }
 }
-
-/// Errors when working with BTree.
-#[derive(Debug)]
-pub enum BTreeError {
-    /// When load file.
-    LoadFileError(LoadFileError),
-    /// Error of working with file.
-    FileError(std::io::Error),
-}
-
-impl From<std::io::Error> for BTreeError {
-    fn from(err: std::io::Error) -> Self {
-        BTreeError::FileError(err)
-    }
-}
-
-impl std::fmt::Display for BTreeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for BTreeError {}

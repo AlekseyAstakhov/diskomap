@@ -3,7 +3,6 @@ mod tests {
     use tempfile::tempdir;
     use crate::BTree;
     use std::io::Write;
-    use crate::btree::BTreeError;
     use crate::file_work::LoadFileError;
 
     #[test]
@@ -148,14 +147,12 @@ mod tests {
         let bad_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949338173\nins [5,\"c\"] 1023287335\n";
         f.write_all(bad_content.as_bytes())?;
         drop(f);
-        let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Crc32));
+        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, Some(Integrity::Crc32));
         let mut crc_is_correct = true;
         if let Err(res) = res {
-            if let BTreeError::LoadFileError(err) = res {
-                if let LoadFileError::WrongCrc32 { line_num } = err {
-                        if line_num == 2 {
-                        crc_is_correct = false;
-                    }
+            if let LoadFileError::WrongCrc32 { line_num } = res {
+                    if line_num == 2 {
+                    crc_is_correct = false;
                 }
             }
         }
@@ -205,14 +202,12 @@ mod tests {
 
         f.write_all(bad_content.as_bytes())?;
         drop(f);
-        let res: Result<BTree<i32, String>, BTreeError> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())));
+        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())));
         let mut crc_is_correct = true;
         if let Err(res) = res {
-            if let BTreeError::LoadFileError(err) = res {
-                if let LoadFileError::WrongSha256Chain { line_num } = err {
-                    if line_num == 2 {
-                        crc_is_correct = false;
-                    }
+            if let LoadFileError::WrongSha256Chain { line_num } = res {
+                if line_num == 2 {
+                    crc_is_correct = false;
                 }
             }
         }
