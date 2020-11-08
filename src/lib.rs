@@ -2,8 +2,9 @@
 
 pub mod btree;
 pub mod btree_index;
-pub mod file_work;
+pub mod hashmap_index;
 pub mod integrity;
+pub mod file_work;
 mod file_worker;
 mod index;
 mod tests;

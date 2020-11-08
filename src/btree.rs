@@ -12,8 +12,10 @@ use crate::Integrity;
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::OpenOptions;
+use std::hash::Hash;
+use crate::hashmap_index::HashMapIndex;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -139,6 +141,37 @@ where
         }
 
         let index = BtreeIndex::new(index_map, make_index_key_callback);
+        self.indexes.push(Box::new(index.clone()));
+
+        index
+    }
+
+    /// Create custom index by value.
+    /// 'make_index_key_callback' function is called during all operations of inserting,
+    /// and deleting elements. In the function it is necessary to determine
+    /// the value and type of the index key in any way related to the value of the 'BTree'.
+    pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
+                                        -> HashMapIndex<IndexKey, Key, Value>
+        where
+            IndexKey: Clone + Hash + Eq + 'static,
+    {
+        let mut index_map: HashMap<IndexKey, BTreeSet<Key>> = HashMap::new();
+
+        for (key, val) in self.map.iter() {
+            let index_key = make_index_key_callback(&val);
+            match index_map.get_mut(&index_key) {
+                Some(keys) => {
+                    keys.insert(key.clone());
+                }
+                None => {
+                    let mut set = BTreeSet::new();
+                    set.insert(key.clone());
+                    index_map.insert(index_key, set);
+                }
+            }
+        }
+
+        let index = HashMapIndex::new(index_map, make_index_key_callback);
         self.indexes.push(Box::new(index.clone()));
 
         index
