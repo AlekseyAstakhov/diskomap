@@ -144,10 +144,8 @@ where
         }
 
         let index = BtreeIndex {
-            inner: Arc::new(crate::btree_index::Inner {
-                map: RwLock::new(index_map),
-                make_index_key_callback: make_index_key_callback,
-            }),
+            map: Arc::new(RwLock::new(index_map)),
+            make_index_key_callback: make_index_key_callback,
         };
 
         self.indexes.push(Box::new(index.clone()));

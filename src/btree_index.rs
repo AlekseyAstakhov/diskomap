@@ -5,12 +5,7 @@ use std::sync::{Arc, RwLock};
 /// The Btree index for getting indexes of the map by parts of value.
 #[derive(Clone)]
 pub struct BtreeIndex<IndexKey: Ord, BTreeKey, BTreeValue> {
-    pub(crate) inner: Arc<Inner<IndexKey, BTreeKey, BTreeValue>>,
-}
-
-/// Inner data of 'BtreeIndex', need for clone all fields of 'BtreeIndex' together.
-pub struct Inner<IndexKey: Ord, BTreeKey, BTreeValue> {
-    pub(crate) map: RwLock<BTreeMap<IndexKey, BTreeSet<BTreeKey>>>,
+    pub(crate) map: Arc<RwLock<BTreeMap<IndexKey, BTreeSet<BTreeKey>>>>,
     pub(crate) make_index_key_callback: fn(&BTreeValue) -> IndexKey,
 }
 
@@ -18,7 +13,7 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
     /// BTreeMap keys by custom index. Empty vec if no so index.
     pub fn get(&self, key: &IndexKey) -> Vec<BTreeKey> {
         let mut vec = vec![];
-        let map = self.inner.map.read().unwrap();
+        let map = self.map.read().unwrap();
         if let Some(btree_keys) = map.get(key) {
             vec = (*btree_keys).iter().cloned().collect();
         }
@@ -27,7 +22,7 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
     }
 
     pub fn len(&self) -> usize {
-        self.inner.map.read().unwrap().len()
+        self.map.read().unwrap().len()
     }
 
 
@@ -43,14 +38,14 @@ where
 {
     /// Updates index when insert operation on 'BTree'.
     fn on_insert(&self, btree_key: BTreeKey, value: BTreeValue, old_value: Option<BTreeValue>) {
-        let index_key = (self.inner.make_index_key_callback)(&value);
+        let index_key = (self.make_index_key_callback)(&value);
         let old_value_index_key = if let Some(old_value) = old_value {
-            Some((self.inner.make_index_key_callback)(&old_value))
+            Some((self.make_index_key_callback)(&old_value))
         } else {
             None
         };
 
-        if let Ok(mut map) = self.inner.map.write() {
+        if let Ok(mut map) = self.map.write() {
             if let Some(old_value_index_key) = old_value_index_key {
                 if let Some(keys) = map.get_mut(&old_value_index_key) {
                     keys.remove(&btree_key);
@@ -74,9 +69,9 @@ where
 
     /// Updates index when remove operation on 'BTree'.
     fn on_remove(&self, key: &BTreeKey, value: &BTreeValue) {
-        let index_key = (self.inner.make_index_key_callback)(&value);
+        let index_key = (self.make_index_key_callback)(&value);
 
-        if let Ok(mut map)= self.inner.map.write() {
+        if let Ok(mut map)= self.map.write() {
             if let Some(keys) = map.get_mut(&index_key) {
                 keys.remove(key);
             }
