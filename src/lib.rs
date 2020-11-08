@@ -11,3 +11,4 @@ mod tests;
 
 pub use btree::BTree;
 pub use integrity::Integrity;
+pub use file_work::LoadFileError;
