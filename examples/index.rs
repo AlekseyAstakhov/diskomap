@@ -9,7 +9,10 @@ struct User {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut users = diskomap::BTree::open_or_create("db/index_db.txt", None)?;
 
-    // The btree index can be of a any type that implements Ord trait.
+    // Indexes can be created to quickly retrieve elements by value content,
+    // they can be as btree or as hashmap.
+
+    // The btree index can be of a any type that implements Ord and Clone trait.
     // Usually index is part of the value. Use of data not included in the value should be avoided.
     // For example, the index for getting users by name looks like this:
     let user_name_index = users.create_btree_index(|user: &User|
