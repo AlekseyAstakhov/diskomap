@@ -7,7 +7,7 @@ use std::io::Write;
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {
-    tasks_sender: Sender<FileWorkerTask>,
+    task_sender: Sender<FileWorkerTask>,
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -39,13 +39,13 @@ impl FileWorker {
             }
         }));
 
-        FileWorker { tasks_sender, join_handle }
+        FileWorker { task_sender: tasks_sender, join_handle }
     }
 
     /// Write insert operation in the file in the background thread.
     pub fn write(&self, data: String) {
         let task = FileWorkerTask::Write(data);
-        if self.tasks_sender.send(task).is_err() {
+        if self.task_sender.send(task).is_err() {
             unreachable!()
         }
     }
@@ -53,7 +53,7 @@ impl FileWorker {
 
 impl Drop for FileWorker {
     fn drop(&mut self) {
-        if let Err(err) = self.tasks_sender.send(FileWorkerTask::Stop) {
+        if let Err(err) = self.task_sender.send(FileWorkerTask::Stop) {
             unreachable!(err);
         }
         self.join_handle.take().map(JoinHandle::join);
