@@ -1,4 +1,4 @@
-use crate::index::IndexTrait;
+use crate::index::UpdateIndex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, RwLock};
 
@@ -32,7 +32,7 @@ impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, 
     }
 }
 
-impl<IndexKey, BTreeKey, BTreeValue> IndexTrait<BTreeKey, BTreeValue> for BtreeIndex<IndexKey, BTreeKey, BTreeValue>
+impl<IndexKey, BTreeKey, BTreeValue> UpdateIndex<BTreeKey, BTreeValue> for BtreeIndex<IndexKey, BTreeKey, BTreeValue>
 where
     IndexKey: Ord,
     BTreeKey: Ord,

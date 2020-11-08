@@ -1,4 +1,4 @@
-use crate::index::IndexTrait;
+use crate::index::UpdateIndex;
 use crate::btree_index::BtreeIndex;
 use crate::file_worker::FileWorker;
 use crate::file_work::{
@@ -27,7 +27,7 @@ pub struct BTree<Key, Value> {
     file_worker: Option<FileWorker>,
 
     /// Created indexes.
-    indexes: Vec<Box<dyn IndexTrait<Key, Value>>>,
+    indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
     /// Mechanism of controlling the integrity of stored data in a log file.
     integrity: Option<Integrity>,
 }

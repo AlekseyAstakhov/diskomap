@@ -1,4 +1,4 @@
-use crate::index::IndexTrait;
+use crate::index::UpdateIndex;
 use std::collections::{HashMap, BTreeSet};
 use std::sync::{Arc, RwLock};
 use std::hash::Hash;
@@ -33,7 +33,7 @@ impl<IndexKey: Hash + Eq, BTreeKey: Clone, BTreeValue> HashMapIndex<IndexKey, BT
     }
 }
 
-impl<IndexKey, BTreeKey, BTreeValue> IndexTrait<BTreeKey, BTreeValue> for HashMapIndex<IndexKey, BTreeKey, BTreeValue>
+impl<IndexKey, BTreeKey, BTreeValue> UpdateIndex<BTreeKey, BTreeValue> for HashMapIndex<IndexKey, BTreeKey, BTreeValue>
     where
         IndexKey: Hash + Eq,
         BTreeKey: Ord,
