@@ -176,6 +176,6 @@ where
 
     /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
     pub fn cloned_values(&self) -> Vec<Value> {
-        self.map.values().map(|val| val.clone()).collect()
+        self.map.values().cloned().collect()
     }
 }
