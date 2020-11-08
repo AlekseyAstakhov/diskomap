@@ -11,8 +11,8 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
     -> Result<BTreeMap<Key, Value>, LoadFileError>
     where
         Key: std::cmp::Ord + DeserializeOwned,
-        Value: DeserializeOwned {
-
+        Value: DeserializeOwned
+{
     let mut map = BTreeMap::new();
     let mut reader = BufReader::new(file);
     let mut line = String::with_capacity(150);
