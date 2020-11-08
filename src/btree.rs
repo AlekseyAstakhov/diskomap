@@ -78,10 +78,8 @@ where
         }
 
         // add operation to operations log file
-        let key_val_json = serde_json::to_string(&(&key, &value))?;
-
         if let Some(file_worker) = &self.file_worker {
-            let line = file_line_of_insert(&key_val_json, &mut self.integrity);
+            let line = file_line_of_insert(&key, &value, &mut self.integrity)?;
             file_worker.write(line);
         } else {
             unreachable!();
@@ -103,10 +101,8 @@ where
                 index.on_remove(&key, &old_value);
             }
 
-            let key_json = serde_json::to_string(&key)?;
-
             if let Some(file_worker) = &self.file_worker {
-                let line = file_line_of_remove(&key_json, &mut self.integrity);
+                let line = file_line_of_remove(key, &mut self.integrity)?;
                 file_worker.write(line);
             } else {
                 unreachable!();

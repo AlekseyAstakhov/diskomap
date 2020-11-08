@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::collections::BTreeMap;
 use crc::crc32;
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 /// Load from file all operations and make actual map.
 pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
@@ -96,7 +97,10 @@ pub enum LoadFileError {
 }
 
 /// Make line with insert operation for write to file.
-pub fn file_line_of_insert(key_val_json: &str, integrity: &mut Option<Integrity>) -> String {
+pub fn file_line_of_insert<Key, Value>(key: &Key, value: Value, integrity: &mut Option<Integrity>) -> Result<String, serde_json::Error>
+    where Key: Serialize, Value: Serialize
+{
+    let key_val_json = serde_json::to_string(&(&key, &value))?;
     let mut line = "ins ".to_string() + &key_val_json;
 
     if let Some(integrity) = integrity {
@@ -114,12 +118,15 @@ pub fn file_line_of_insert(key_val_json: &str, integrity: &mut Option<Integrity>
     }
 
     line.push('\n');
-    line
+    Ok(line)
 }
 
 /// Make line with remove operation for write to file.
-pub fn file_line_of_remove(key_json: &str, integrity: &mut Option<Integrity>) -> String {
-    let mut line = "rem ".to_string() + key_json;
+pub fn file_line_of_remove<Key>(key: &Key, integrity: &mut Option<Integrity>) -> Result<String, serde_json::Error>
+    where Key: Serialize
+{
+    let key_json = serde_json::to_string(key)?;
+    let mut line = "rem ".to_string() + &key_json;
 
     if let Some(integrity) = integrity {
         match integrity {
@@ -136,7 +143,7 @@ pub fn file_line_of_remove(key_json: &str, integrity: &mut Option<Integrity>) ->
     }
 
     line.push('\n');
-    line
+    Ok(line)
 }
 
 /// Create dirs to path if not exist.
