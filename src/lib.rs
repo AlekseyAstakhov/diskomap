@@ -1,12 +1,10 @@
 #![forbid(unsafe_code)]
 
 pub mod btree;
-pub mod btree_index;
-pub mod hashmap_index;
 pub mod integrity;
 pub mod file_work;
+pub mod index;
 mod file_worker;
-mod index;
 mod tests;
 
 pub use btree::BTree;

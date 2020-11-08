@@ -1,6 +1,12 @@
-use crate::index::UpdateIndex;
-use crate::btree_index::BtreeIndex;
+use fs2::FileExt;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::OpenOptions;
+use std::hash::Hash;
+use crate::index::{UpdateIndex, Index, BtreeIndexMap, HashIndexMap, IndexMap};
 use crate::file_worker::FileWorker;
+use crate::Integrity;
 use crate::file_work::{
     load_from_file,
     file_line_of_insert,
@@ -8,14 +14,6 @@ use crate::file_work::{
     create_dirs_to_path_if_not_exist,
     LoadFileError
 };
-use crate::Integrity;
-use fs2::FileExt;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::fs::OpenOptions;
-use std::hash::Hash;
-use crate::hashmap_index::HashMapIndex;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -120,30 +118,11 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_btree_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-        -> BtreeIndex<IndexKey, Key, Value>
-    where
-        IndexKey: Clone + Ord + 'static,
+        -> Index<IndexKey, Key, Value>
+        where
+            IndexKey: Clone + Ord + 'static
     {
-        let mut index_map: BTreeMap<IndexKey, BTreeSet<Key>> = BTreeMap::new();
-
-        for (key, val) in self.map.iter() {
-            let index_key = make_index_key_callback(&val);
-            match index_map.get_mut(&index_key) {
-                Some(keys) => {
-                    keys.insert(key.clone());
-                }
-                None => {
-                    let mut set = BTreeSet::new();
-                    set.insert(key.clone());
-                    index_map.insert(index_key, set);
-                }
-            }
-        }
-
-        let index = BtreeIndex::new(index_map, make_index_key_callback);
-        self.indexes.push(Box::new(index.clone()));
-
-        index
+        self.create_index::<IndexKey, BtreeIndexMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
     /// Create custom index by value.
@@ -151,11 +130,24 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-                                        -> HashMapIndex<IndexKey, Key, Value>
-        where
-            IndexKey: Clone + Hash + Eq + 'static,
+        -> Index<IndexKey, Key, Value>
+    where
+        IndexKey: Clone + Hash + Eq + 'static,
     {
-        let mut index_map: HashMap<IndexKey, BTreeSet<Key>> = HashMap::new();
+        self.create_index::<IndexKey, HashIndexMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
+    }
+
+    /// Create custom index by value.
+    /// 'make_index_key_callback' function is called during all operations of inserting,
+    /// and deleting elements. In the function it is necessary to determine
+    /// the value and type of the index key in any way related to the value of the 'BTree'.
+    pub fn create_index<IndexKey, Map>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
+                                          -> Index<IndexKey, Key, Value>
+        where
+            IndexKey: Clone + Eq + 'static,
+            Map: IndexMap<IndexKey, BTreeSet<Key>> + Default + Sized + 'static,
+    {
+        let mut index_map = Map::default();
 
         for (key, val) in self.map.iter() {
             let index_key = make_index_key_callback(&val);
@@ -171,7 +163,7 @@ where
             }
         }
 
-        let index = HashMapIndex::new(index_map, make_index_key_callback);
+        let index = Index::new(index_map, make_index_key_callback);
         self.indexes.push(Box::new(index.clone()));
 
         index
