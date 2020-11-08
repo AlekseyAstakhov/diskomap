@@ -5,29 +5,30 @@ use std::sync::{Arc, RwLock};
 /// The Btree index for getting indexes of the map by parts of value.
 #[derive(Clone)]
 pub struct BtreeIndex<IndexKey: Ord, BTreeKey, BTreeValue> {
-    pub(crate) map: Arc<RwLock<BTreeMap<IndexKey, BTreeSet<BTreeKey>>>>,
-    pub(crate) make_index_key_callback: fn(&BTreeValue) -> IndexKey,
+    map: Arc<RwLock<BTreeMap<IndexKey, BTreeSet<BTreeKey>>>>,
+    make_index_key_callback: fn(&BTreeValue) -> IndexKey,
 }
 
 impl<IndexKey: Ord, BTreeKey: Clone, BTreeValue> BtreeIndex<IndexKey, BTreeKey, BTreeValue> {
     /// BTreeMap keys by custom index. Empty vec if no so index.
     pub fn get(&self, key: &IndexKey) -> Vec<BTreeKey> {
         let mut vec = vec![];
-        let map = self.map.read().unwrap();
-        if let Some(btree_keys) = map.get(key) {
-            vec = (*btree_keys).iter().cloned().collect();
+        if let Ok(map) = self.map.read() {
+            if let Some(btree_keys) = map.get(key) {
+                vec = (*btree_keys).iter().cloned().collect();
+            }
+        } else {
+            unreachable!(); // because there is no code that can cause panic during blocking
         }
 
         vec
     }
 
-    pub fn len(&self) -> usize {
-        self.map.read().unwrap().len()
-    }
-
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub(crate) fn new(indexes: BTreeMap<IndexKey, BTreeSet<BTreeKey>>, make_index_key_callback: fn(&BTreeValue) -> IndexKey) -> Self {
+        BtreeIndex {
+            map: Arc::new(RwLock::new(indexes)),
+            make_index_key_callback,
+        }
     }
 }
 

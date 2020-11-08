@@ -14,7 +14,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
-use std::sync::{Arc, RwLock};
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -139,11 +138,7 @@ where
             }
         }
 
-        let index = BtreeIndex {
-            map: Arc::new(RwLock::new(index_map)),
-            make_index_key_callback: make_index_key_callback,
-        };
-
+        let index = BtreeIndex::new(index_map, make_index_key_callback);
         self.indexes.push(Box::new(index.clone()));
 
         index
