@@ -122,11 +122,10 @@ where
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
-    pub fn create_btree_index<IndexKey, F>(&mut self, make_index_key_callback: F)
+    pub fn create_btree_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
         -> BtreeIndex<IndexKey, Key, Value>
     where
-        IndexKey: Clone + Ord + Send + Sync + 'static,
-        F: Fn(&Value) -> IndexKey + Send + Sync + 'static,
+        IndexKey: Clone + Ord + 'static,
     {
         let mut index_map: BTreeMap<IndexKey, BTreeSet<Key>> = BTreeMap::new();
 
@@ -147,7 +146,7 @@ where
         let index = BtreeIndex {
             inner: Arc::new(crate::btree_index::Inner {
                 map: RwLock::new(index_map),
-                make_index_key_callback: RwLock::new(Box::new(make_index_key_callback)),
+                make_index_key_callback: make_index_key_callback,
             }),
         };
 
