@@ -72,8 +72,15 @@ impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for 
         let index_key = (self.make_index_key_callback)(&value);
 
         if let Ok(mut map)= self.map.write() {
+            let mut need_remove_index = false;
             if let Some(keys) = map.get_mut(&index_key) {
                 keys.remove(key);
+                if keys.is_empty() {
+                    need_remove_index = true;
+                }
+            }
+            if need_remove_index {
+                map.remove(&index_key);
             }
         } else {
             unreachable!(); // because there is no code that can cause panic during blocking
@@ -95,6 +102,7 @@ pub trait IndexMap<Key, Value> {
     fn get(&self, key: &Key) -> Option<&Value>;
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value>;
     fn insert(&mut self, key: Key, value: Value);
+    fn remove(&mut self, key: &Key);
 }
 
 /// For the index that uses the BTreeMap.
@@ -112,6 +120,7 @@ impl<Key: Ord, Value>  IndexMap<Key, Value>  for BtreeIndexMap<Key, Value>  {
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
     fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
+    fn remove(&mut self, key: &Key) { self.map.remove(key); }
 }
 
 /// For the index that uses the HashMap.
@@ -129,4 +138,5 @@ impl<Key: Hash + Eq, Value>  IndexMap<Key, Value>  for HashIndexMap<Key, Value> 
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
     fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
+    fn remove(&mut self, key: &Key) { self.map.remove(key); }
 }
