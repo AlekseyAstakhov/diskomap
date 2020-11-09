@@ -18,7 +18,7 @@ impl FileWorker {
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
             let task = task_receiver.recv()
-                .unwrap_or_else(|err| unreachable!(err)); // unreachable because channel will disconnected only after out this loop
+                .unwrap_or_else(|err| unreachable!(err)); // unreachable because owner thread will join this thread handle after send FileWorkerTask::Stop and only after will disconnect channel
 
             match task {
                 FileWorkerTask::Write(data) => {
