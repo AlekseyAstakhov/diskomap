@@ -19,6 +19,8 @@ pub struct BtreeMapWrapper<IndexKey, OwnerKey> {
     pub map: BTreeMap<IndexKey, OwnerKey>
 }
 
+/// std::collections::BTreeMap wrapper.
+/// Need because i was not possible to implement the trait directly for std::collections::BTreeMap wrapper.
 impl<IndexKey: Ord, OwnerKey> Default for BtreeMapWrapper<IndexKey, OwnerKey> {
     fn default() -> Self {
         BtreeMapWrapper { map: BTreeMap::new() }
@@ -32,7 +34,8 @@ impl<Key: Ord, Value>  MapTrait<Key, Value>  for BtreeMapWrapper<Key, Value>  {
     fn remove(&mut self, key: &Key) { self.map.remove(key); }
 }
 
-/// For the index that uses the HashMap.
+/// std::collections::HashMap wrapper.
+/// Need because i was not possible to implement the trait directly for std::collections::HashMap wrapper.
 pub struct HashMapWrapper<IndexKey, OwnerKey> {
     map: HashMap<IndexKey, OwnerKey>
 }
