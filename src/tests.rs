@@ -45,8 +45,10 @@ mod tests {
             map.insert("key 1".to_string(), 100)?;
             map.remove(&"key 2".to_string())?;
             map.insert("key 7".to_string(), 7)?;
-            assert_eq!(map.cloned_keys(), vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.cloned_values(), vec![100, 3, 5, 6, 7]);
+            let keys = map.map().keys().cloned().collect::<Vec<String>>();
+            assert_eq!(keys, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            let values = map.map().values().cloned().collect::<Vec<i32>>();
+            assert_eq!(values, vec![100, 3, 5, 6, 7]);
         }
         // after restart
         {
@@ -65,8 +67,10 @@ mod tests {
             assert_eq!(4, map.len());
             assert_eq!(Some(&33), map.get(&"key 3".to_string()));
             assert_eq!(None, map.get(&"key 1".to_string()));
-            assert_eq!(map.cloned_keys(), vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            assert_eq!(map.cloned_values(), vec![33, 5, 6, 7]);
+            let keys = map.map().keys().cloned().collect::<Vec<String>>();
+            assert_eq!(keys, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+            let values = map.map().values().cloned().collect::<Vec<i32>>();
+            assert_eq!(values, vec![33, 5, 6, 7]);
         }
 
         Ok(())

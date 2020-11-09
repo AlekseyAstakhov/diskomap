@@ -188,14 +188,4 @@ where
     pub fn contains_key(&self, key: &Key) -> bool {
         self.map.contains_key(key)
     }
-
-    /// Returns cloned keys of the map, in sorted order. No writing to the operations log file.
-    pub fn cloned_keys(&self) -> Vec<Key> {
-        self.map.keys().cloned().collect()
-    }
-
-    /// Returns cloned values of the map, in sorted order. No writing to the operations log file.
-    pub fn cloned_values(&self) -> Vec<Value> {
-        self.map.values().cloned().collect()
-    }
 }
