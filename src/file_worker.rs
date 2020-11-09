@@ -34,7 +34,7 @@ impl FileWorker {
                     }
                 },
                 Err(err) => {
-                    dbg!(err);
+                    unreachable!(err);
                 }
             }
         }));
@@ -45,8 +45,8 @@ impl FileWorker {
     /// Write insert operation in the file in the background thread.
     pub fn write(&self, data: String) {
         let task = FileWorkerTask::Write(data);
-        if self.task_sender.send(task).is_err() {
-            unreachable!()
+        if let Err(err) = self.task_sender.send(task) {
+            unreachable!(err);
         }
     }
 }
@@ -61,17 +61,8 @@ impl Drop for FileWorker {
 }
 
 fn call_error_callback(callback: &Option<Box<dyn Fn(std::io::Error) + Send>>, err: std::io::Error) {
-    match callback {
-        Some(callback) => {
-            if let Err(err) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                callback(err);
-            })) {
-                dbg!(format!("panic in background error hook function {:?}", &err));
-            }
-        }
-        None => {
-            dbg!(&err);
-        }
+    if let Some(callback) = callback {
+        callback(err);
     }
 }
 
