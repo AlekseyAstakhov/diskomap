@@ -1,6 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::sync::{Arc, RwLock};
-use std::hash::Hash;
 use crate::map_trait::MapTrait;
 
 /// The index for getting indexes of the owner map by parts of value.
@@ -92,40 +91,4 @@ pub(crate) trait UpdateIndex<OwnerKey, OwnerValue> {
     fn on_insert(&self, key: OwnerKey, value: OwnerValue, old_value: Option<OwnerValue>);
     /// Updates index when remove operation on map.
     fn on_remove(&self, key: &OwnerKey, value: &OwnerValue);
-}
-
-/// For the index that uses the BTreeMap.
-pub struct BtreeIndexMap<IndexKey, OwnerKey> {
-    pub map: BTreeMap<IndexKey, OwnerKey>
-}
-
-impl<IndexKey: Ord, OwnerKey> Default for BtreeIndexMap<IndexKey, OwnerKey> {
-    fn default() -> Self {
-        BtreeIndexMap { map: BTreeMap::new() }
-    }
-}
-
-impl<Key: Ord, Value>  MapTrait<Key, Value>  for BtreeIndexMap<Key, Value>  {
-    fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
-    fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
-    fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
-    fn remove(&mut self, key: &Key) { self.map.remove(key); }
-}
-
-/// For the index that uses the HashMap.
-pub struct HashIndexMap<IndexKey, OwnerKey> {
-    map: HashMap<IndexKey, OwnerKey>
-}
-
-impl<IndexKey: Hash, OwnerKey> Default for HashIndexMap<IndexKey, OwnerKey> {
-    fn default() -> Self {
-        HashIndexMap { map: HashMap::new() }
-    }
-}
-
-impl<Key: Hash + Eq, Value>  MapTrait<Key, Value>  for HashIndexMap<Key, Value>  {
-    fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
-    fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
-    fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
-    fn remove(&mut self, key: &Key) { self.map.remove(key); }
 }
