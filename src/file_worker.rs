@@ -17,25 +17,21 @@ impl FileWorker {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
-            match task_receiver.recv() {
-                Ok(task) => {
-                    match task {
-                        FileWorkerTask::Write(data) => {
-                            if let Err(err) = file.write_all(data.as_bytes()) {
-                                if let Some(callback) = &error_callback { callback(err); }
-                            }
-                        },
-                        FileWorkerTask::Stop => {
-                            if let Err(err) = file.unlock() {
-                                if let Some(callback) = &error_callback { callback(err); }
-                            }
-                            break 'thread_loop;
-                        },
+            let task = task_receiver.recv()
+                .unwrap_or_else(|err| unreachable!(err)); // unreachable because channel will disconnected only after out this loop
+
+            match task {
+                FileWorkerTask::Write(data) => {
+                    if let Err(err) = file.write_all(data.as_bytes()) {
+                        if let Some(callback) = &error_callback { callback(err); }
                     }
                 },
-                Err(err) => {
-                    unreachable!(err);
-                }
+                FileWorkerTask::Stop => {
+                    if let Err(err) = file.unlock() {
+                        if let Some(callback) = &error_callback { callback(err); }
+                    }
+                    break 'thread_loop;
+                },
             }
         }));
 
@@ -53,9 +49,8 @@ impl FileWorker {
 
 impl Drop for FileWorker {
     fn drop(&mut self) {
-        if let Err(err) = self.task_sender.send(FileWorkerTask::Stop) {
-            unreachable!(err);
-        }
+        self.task_sender.send(FileWorkerTask::Stop)
+            .unwrap_or_else(|err| unreachable!(err)); // because thread can't stop while FileWorkerTask::Stop is not received
         self.join_handle.take().map(JoinHandle::join);
     }
 }

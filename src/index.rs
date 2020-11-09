@@ -13,12 +13,11 @@ impl<IndexKey, OwnerKey: Ord + Clone, OwnerValue> Index<IndexKey, OwnerKey, Owne
     /// Owner keys by custom index. Empty vec if no so index.
     pub fn get(&self, key: &IndexKey) -> Vec<OwnerKey> {
         let mut vec = vec![];
-        if let Ok(map) = self.map.read() {
-            if let Some(btree_keys) = map.get(key) {
-                vec = (*btree_keys).iter().cloned().collect();
-            }
-        } else {
-            unreachable!(); // because there is no code that can cause panic during blocking
+        let map = self.map.read()
+            .unwrap_or_else(|err| unreachable!(err));
+
+        if let Some(btree_keys) = map.get(key) {
+            vec = (*btree_keys).iter().cloned().collect();
         }
 
         vec
@@ -45,25 +44,24 @@ impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for 
             None
         };
 
-        if let Ok(mut map) = self.map.write() {
-            if let Some(old_value_index_key) = old_value_index_key {
-                if let Some(keys) = map.get_mut(&old_value_index_key) {
-                    keys.remove(&btree_key);
-                }
-            }
+        let mut map = self.map.write()
+            .unwrap_or_else(|err| unreachable!(err));
 
-            match map.get_mut(&index_key) {
-                Some(keys) => {
-                    keys.insert(btree_key);
-                }
-                None => {
-                    let mut set = BTreeSet::new();
-                    set.insert(btree_key);
-                    map.insert(index_key, set);
-                }
+        if let Some(old_value_index_key) = old_value_index_key {
+            if let Some(keys) = map.get_mut(&old_value_index_key) {
+                keys.remove(&btree_key);
             }
-        } else {
-            unreachable!(); // because there is no code that can cause panic during blocking
+        }
+
+        match map.get_mut(&index_key) {
+            Some(keys) => {
+                keys.insert(btree_key);
+            }
+            None => {
+                let mut set = BTreeSet::new();
+                set.insert(btree_key);
+                map.insert(index_key, set);
+            }
         }
     }
 
@@ -71,19 +69,18 @@ impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for 
     fn on_remove(&self, key: &OwnerKey, value: &OwnerValue) {
         let index_key = (self.make_index_key_callback)(&value);
 
-        if let Ok(mut map)= self.map.write() {
-            let mut need_remove_index = false;
-            if let Some(keys) = map.get_mut(&index_key) {
-                keys.remove(key);
-                if keys.is_empty() {
-                    need_remove_index = true;
-                }
+        let mut map = self.map.write()
+            .unwrap_or_else(|err| unreachable!(err));
+
+        let mut need_remove_index = false;
+        if let Some(keys) = map.get_mut(&index_key) {
+            keys.remove(key);
+            if keys.is_empty() {
+                need_remove_index = true;
             }
-            if need_remove_index {
-                map.remove(&index_key);
-            }
-        } else {
-            unreachable!(); // because there is no code that can cause panic during blocking
+        }
+        if need_remove_index {
+            map.remove(&index_key);
         }
     }
 }

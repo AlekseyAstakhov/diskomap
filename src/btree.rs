@@ -22,7 +22,7 @@ pub struct BTree<Key, Value> {
     /// Map in the RAM.
     map: BTreeMap<Key, Value>,
     // For append operations to the operations log file in background thread.
-    file_worker: Option<FileWorker>,
+    file_worker: FileWorker,
 
     /// Created indexes.
     indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
@@ -60,7 +60,7 @@ where
 
         Ok(BTree {
             map,
-            file_worker: Some(FileWorker::new(file, on_background_error)),
+            file_worker: FileWorker::new(file, on_background_error),
             indexes: Vec::new(),
             integrity,
         })
@@ -77,12 +77,8 @@ where
         }
 
         // add operation to operations log file
-        if let Some(file_worker) = &self.file_worker {
-            let line = file_line_of_insert(&key, &value, &mut self.integrity)?;
-            file_worker.write(line);
-        } else {
-            unreachable!();
-        }
+        let line = file_line_of_insert(&key, &value, &mut self.integrity)?;
+        self.file_worker.write(line);
 
         Ok(old_value)
     }
@@ -100,12 +96,8 @@ where
                 index.on_remove(&key, &old_value);
             }
 
-            if let Some(file_worker) = &self.file_worker {
-                let line = file_line_of_remove(key, &mut self.integrity)?;
-                file_worker.write(line);
-            } else {
-                unreachable!();
-            }
+            let line = file_line_of_remove(key, &mut self.integrity)?;
+            self.file_worker.write(line);
 
             return Ok(Some(old_value.clone()));
         }
