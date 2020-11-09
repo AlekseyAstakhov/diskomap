@@ -42,14 +42,14 @@ impl FileWorker {
     pub fn write(&self, data: String) {
         let task = FileWorkerTask::Write(data);
         self.task_sender.send(task)
-            .unwrap_or_else(|err| unreachable!(err)); // because channel receiver will drop only after out of thread and thread can't stop while FileWorkerTask::Stop is not received
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because channel receiver will drop only after out of thread and thread can't stop while FileWorkerTask::Stop is not received
     }
 }
 
 impl Drop for FileWorker {
     fn drop(&mut self) {
         self.task_sender.send(FileWorkerTask::Stop)
-            .unwrap_or_else(|err| unreachable!(err)); // because thread can't stop while FileWorkerTask::Stop is not received
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because thread can't stop while FileWorkerTask::Stop is not received
         self.join_handle.take().map(JoinHandle::join);
     }
 }
