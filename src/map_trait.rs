@@ -8,10 +8,10 @@ pub trait MapTrait<Key, Value> {
     fn get(&self, key: &Key) -> Option<&Value>;
     /// Returns a mutable reference to the value corresponding to the key.
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value>;
-    /// Inserts a key-value pair into the map. If the map did not have this key present, `None` is returned.
-    fn insert(&mut self, key: Key, value: Value);
+    /// Inserts a key-value pair into the map and return old value. If the map did not have this key present, `None` is returned.
+    fn insert(&mut self, key: Key, value: Value) -> Option<Value>;
     /// Removes a key from the map, returning the value at the key if the key was previously in the map.
-    fn remove(&mut self, key: &Key);
+    fn remove(&mut self, key: &Key) -> Option<Value>;
 }
 
 /// For the index that uses the BTreeMap.
@@ -30,8 +30,8 @@ impl<IndexKey: Ord, OwnerKey> Default for BtreeMapWrapper<IndexKey, OwnerKey> {
 impl<Key: Ord, Value>  MapTrait<Key, Value>  for BtreeMapWrapper<Key, Value>  {
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
-    fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
-    fn remove(&mut self, key: &Key) { self.map.remove(key); }
+    fn insert(&mut self, key: Key, value: Value) -> Option<Value> { self.map.insert(key, value) }
+    fn remove(&mut self, key: &Key) -> Option<Value> { self.map.remove(key) }
 }
 
 /// std::collections::HashMap wrapper.
@@ -49,6 +49,6 @@ impl<IndexKey: Hash, OwnerKey> Default for HashMapWrapper<IndexKey, OwnerKey> {
 impl<Key: Hash + Eq, Value>  MapTrait<Key, Value>  for HashMapWrapper<Key, Value>  {
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
-    fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
-    fn remove(&mut self, key: &Key) { self.map.remove(key); }
+    fn insert(&mut self, key: Key, value: Value)  -> Option<Value> { self.map.insert(key, value) }
+    fn remove(&mut self, key: &Key) -> Option<Value> { self.map.remove(key) }
 }
