@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Also the index can be more complex than part of the value. For example:
     let age_index = users.create_btree_index(|user: &User|
-        user.age - user.age % 30
+        user.age - user.age % 10
     );
 
     println!("Users 30 - 40 ages:");
