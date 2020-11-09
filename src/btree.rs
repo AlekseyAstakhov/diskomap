@@ -105,7 +105,7 @@ where
         Ok(None)
     }
 
-    /// Create custom index by value.
+    /// Create index by value based on std::collections::BTreeMap.
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
@@ -117,7 +117,7 @@ where
         self.create_index::<IndexKey, BtreeIndexMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
-    /// Create custom index by value.
+    /// Create index by value based on std::collections::HashMap.
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
@@ -129,7 +129,7 @@ where
         self.create_index::<IndexKey, HashIndexMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
-    /// Create custom index by value.
+    /// Create index by value.
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
