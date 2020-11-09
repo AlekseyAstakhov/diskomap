@@ -4,6 +4,7 @@ pub mod btree;
 pub mod integrity;
 pub mod file_work;
 pub mod index;
+pub mod map_trait;
 mod file_worker;
 mod tests;
 

@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 use std::hash::Hash;
+use crate::map_trait::MapTrait;
 
 /// The index for getting indexes of the owner map by parts of value.
 #[derive(Clone)]
 pub struct Index<IndexKey, OwnerKey, OwnerValue>  {
-    map: Arc<RwLock<dyn IndexMap<IndexKey, BTreeSet<OwnerKey>>>>,
+    map: Arc<RwLock<dyn MapTrait<IndexKey, BTreeSet<OwnerKey>>>>,
     make_index_key_callback: fn(&OwnerValue) -> IndexKey,
 }
 
@@ -25,7 +26,7 @@ impl<IndexKey, OwnerKey: Ord + Clone, OwnerValue> Index<IndexKey, OwnerKey, Owne
 
     /// Constructs new Index from custom map and make index callback.
     pub(crate) fn new<Map>(indexes: Map, make_index_key_callback: fn(&OwnerValue) -> IndexKey) -> Self
-        where Map: IndexMap<IndexKey, BTreeSet<OwnerKey>> + 'static
+        where Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> + 'static
     {
         Index {
             map: Arc::new(RwLock::new(indexes)),
@@ -93,15 +94,6 @@ pub(crate) trait UpdateIndex<OwnerKey, OwnerValue> {
     fn on_remove(&self, key: &OwnerKey, value: &OwnerValue);
 }
 
-/// Trait of map what contains indexes.
-/// Needed for create indexes with arbitrary storage map, such as 'BTreeMap', 'HashMap', etc.
-pub trait IndexMap<Key, Value> {
-    fn get(&self, key: &Key) -> Option<&Value>;
-    fn get_mut(&mut self, key: &Key) -> Option<&mut Value>;
-    fn insert(&mut self, key: Key, value: Value);
-    fn remove(&mut self, key: &Key);
-}
-
 /// For the index that uses the BTreeMap.
 pub struct BtreeIndexMap<IndexKey, OwnerKey> {
     pub map: BTreeMap<IndexKey, OwnerKey>
@@ -113,7 +105,7 @@ impl<IndexKey: Ord, OwnerKey> Default for BtreeIndexMap<IndexKey, OwnerKey> {
     }
 }
 
-impl<Key: Ord, Value>  IndexMap<Key, Value>  for BtreeIndexMap<Key, Value>  {
+impl<Key: Ord, Value>  MapTrait<Key, Value>  for BtreeIndexMap<Key, Value>  {
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
     fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }
@@ -131,7 +123,7 @@ impl<IndexKey: Hash, OwnerKey> Default for HashIndexMap<IndexKey, OwnerKey> {
     }
 }
 
-impl<Key: Hash + Eq, Value>  IndexMap<Key, Value>  for HashIndexMap<Key, Value>  {
+impl<Key: Hash + Eq, Value>  MapTrait<Key, Value>  for HashIndexMap<Key, Value>  {
     fn get(&self, key: &Key) -> Option<&Value> { self.map.get(key) }
     fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.map.get_mut(key) }
     fn insert(&mut self, key: Key, value: Value) { self.map.insert(key, value); }

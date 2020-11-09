@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::OpenOptions;
 use std::hash::Hash;
-use crate::index::{UpdateIndex, Index, BtreeIndexMap, HashIndexMap, IndexMap};
+use crate::index::{UpdateIndex, Index, BtreeIndexMap, HashIndexMap};
 use crate::file_worker::FileWorker;
 use crate::Integrity;
 use crate::file_work::{
@@ -14,6 +14,7 @@ use crate::file_work::{
     create_dirs_to_path_if_not_exist,
     LoadFileError
 };
+use crate::map_trait::MapTrait;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -137,7 +138,7 @@ where
                                           -> Index<IndexKey, Key, Value>
         where
             IndexKey: Clone + Eq + 'static,
-            Map: IndexMap<IndexKey, BTreeSet<Key>> + Default + Sized + 'static,
+            Map: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static,
     {
         let mut index_map = Map::default();
 
