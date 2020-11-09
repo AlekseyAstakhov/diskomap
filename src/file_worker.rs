@@ -22,12 +22,12 @@ impl FileWorker {
                     match task {
                         FileWorkerTask::Write(data) => {
                             if let Err(err) = file.write_all(data.as_bytes()) {
-                                call_error_callback(&error_callback, err);
+                                if let Some(callback) = &error_callback { callback(err); }
                             }
                         },
                         FileWorkerTask::Stop => {
                             if let Err(err) = file.unlock() {
-                                call_error_callback(&error_callback, err);
+                                if let Some(callback) = &error_callback { callback(err); }
                             }
                             break 'thread_loop;
                         },
@@ -57,12 +57,6 @@ impl Drop for FileWorker {
             unreachable!(err);
         }
         self.join_handle.take().map(JoinHandle::join);
-    }
-}
-
-fn call_error_callback(callback: &Option<Box<dyn Fn(std::io::Error) + Send>>, err: std::io::Error) {
-    if let Some(callback) = callback {
-        callback(err);
     }
 }
 
