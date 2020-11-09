@@ -41,9 +41,8 @@ impl FileWorker {
     /// Write insert operation in the file in the background thread.
     pub fn write(&self, data: String) {
         let task = FileWorkerTask::Write(data);
-        if let Err(err) = self.task_sender.send(task) {
-            unreachable!(err);
-        }
+        self.task_sender.send(task)
+            .unwrap_or_else(|err| unreachable!(err)); // because channel receiver will drop only after out of thread and thread can't stop while FileWorkerTask::Stop is not received
     }
 }
 
