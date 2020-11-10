@@ -2,6 +2,7 @@
 mod tests {
     use tempfile::tempdir;
     use crate::BTree;
+    use crate::cfg::Cfg;
     use std::io::Write;
     use crate::file_work::LoadFileError;
 
@@ -10,12 +11,12 @@ mod tests {
         // new file
         let file = tempdir()?.path().join("btree_test.txt").to_str().unwrap().to_string();
         {
-            let mut map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, Cfg::default())?;
             map.insert((), ())?;
         }
         // after restart
         {
-            let mut map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, Cfg::default())?;
             assert_eq!(Some(&()), map.get(&()));
             map.insert((), ())?;
             assert_eq!(1, map.len());
@@ -31,7 +32,7 @@ mod tests {
         // new log file
         let file = tempdir()?.path().join("btree_test2.txt").to_str().unwrap().to_string();
         {
-            let mut map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, Cfg::default())?;
             map.insert("key 1".to_string(), 1)?;
             map.insert("key 2".to_string(), 2)?;
             map.insert("key 3".to_string(), 3)?;
@@ -52,7 +53,7 @@ mod tests {
         }
         // after restart
         {
-            let mut map = BTree::open_or_create(&file, None)?;
+            let mut map = BTree::open_or_create(&file, Cfg::default())?;
             assert_eq!(5, map.len());
             assert_eq!(Some(&100), map.get(&"key 1".to_string()));
             assert_eq!(None, map.get(&"key 4".to_string()));
@@ -63,7 +64,7 @@ mod tests {
         }
         // after restart
         {
-            let map = BTree::open_or_create(&file, None)?;
+            let map = BTree::open_or_create(&file, Cfg::default())?;
             assert_eq!(4, map.len());
             assert_eq!(Some(&33), map.get(&"key 3".to_string()));
             assert_eq!(None, map.get(&"key 1".to_string()));
@@ -80,6 +81,7 @@ mod tests {
     fn btree_index() -> Result<(), Box<dyn std::error::Error>> {
         use serde::{Deserialize, Serialize};
         use tempfile::tempdir;
+        use crate::cfg::Cfg;
 
         #[derive(Clone, Serialize, Deserialize)]
         struct User {
@@ -89,7 +91,7 @@ mod tests {
 
         // new log file
         let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
-        let mut map = crate::BTree::open_or_create(&file, None)?;
+        let mut map = crate::BTree::open_or_create(&file, Cfg::default())?;
         let user_name_index = map.create_btree_index(|value: &User| value.name.clone());
 
         map.insert(0, User { name: "Mary".to_string(), age: 21 })?;
@@ -136,7 +138,7 @@ mod tests {
 
         // new log file
         let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
-        let mut map = crate::BTree::open_or_create(&file, None)?;
+        let mut map = crate::BTree::open_or_create(&file, Cfg::default())?;
         let user_name_index = map.create_hashmap_index(|value: &User| value.name.clone());
 
         map.insert(0, User { name: "Mary".to_string(), age: 21 })?;
@@ -175,9 +177,12 @@ mod tests {
         use crate::Integrity;
         use crate::BTree;
         use std::fs::OpenOptions;
+        use crate::cfg::*;
+
+        let cfg = Cfg {integrity: Some(Integrity::Crc32)};
 
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let mut map = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        let mut map = BTree::open_or_create(&file, cfg.clone())?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -186,7 +191,7 @@ mod tests {
         let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\n";
         assert_eq!(file_content, expected_content);
 
-        let mut map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Crc32))?;
+        let mut map: BTree<i32, String> = BTree::open_or_create(&file, cfg.clone())?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -198,7 +203,7 @@ mod tests {
         let bad_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949338173\nins [5,\"c\"] 1023287335\n";
         f.write_all(bad_content.as_bytes())?;
         drop(f);
-        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, Some(Integrity::Crc32));
+        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, cfg);
         let mut crc_is_correct = true;
         if let Err(res) = res {
             if let LoadFileError::WrongCrc32 { line_num } = res {
@@ -220,8 +225,10 @@ mod tests {
 
         let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e";
 
+        let cfg = Cfg { integrity: Some(Integrity::Sha256Chain(inital_hash.to_string())) };
+
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let mut map = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        let mut map = BTree::open_or_create(&file, cfg.clone())?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -234,7 +241,7 @@ mod tests {
 
         assert_eq!(file_content, expected);
 
-        let mut map: BTree<i32, String> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())))?;
+        let mut map: BTree<i32, String> = BTree::open_or_create(&file, cfg.clone())?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -253,7 +260,7 @@ mod tests {
 
         f.write_all(bad_content.as_bytes())?;
         drop(f);
-        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, Some(Integrity::Sha256Chain(inital_hash.to_string())));
+        let res: Result<BTree<i32, String>, LoadFileError> = BTree::open_or_create(&file, cfg);
         let mut crc_is_correct = true;
         if let Err(res) = res {
             if let LoadFileError::WrongSha256Chain { line_num } = res {

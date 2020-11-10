@@ -6,7 +6,6 @@ use std::fs::OpenOptions;
 use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
 use crate::file_worker::FileWorker;
-use crate::Integrity;
 use crate::file_work::{
     load_from_file,
     file_line_of_insert,
@@ -15,6 +14,7 @@ use crate::file_work::{
     LoadFileError
 };
 use crate::map_trait::MapTrait;
+use crate::cfg::Cfg;
 
 /// Container with storing all changes history to the file based on BTree.
 /// Restores own state from the file when creating.
@@ -26,8 +26,8 @@ pub struct BTree<Key, Value> {
 
     /// Created indexes.
     indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
-    /// Mechanism of controlling the integrity of stored data in a log file.
-    integrity: Option<Integrity>,
+    /// Config.
+    cfg: Cfg,
 }
 
 impl<Key, Value: 'static> BTree<Key, Value>
@@ -38,7 +38,7 @@ where
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
-    pub fn open_or_create(file_path: &str, mut integrity: Option<Integrity>) -> Result<Self, LoadFileError> {
+    pub fn open_or_create(file_path: &str, mut cfg: Cfg) -> Result<Self, LoadFileError> {
         create_dirs_to_path_if_not_exist(file_path)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
@@ -46,7 +46,7 @@ where
         file.lock_exclusive()?;
 
         // load current map from operations log file
-        let map = match load_from_file::<BTreeMap<Key, Value>, Key, Value>(&mut file, &mut integrity) {
+        let map = match load_from_file::<BTreeMap<Key, Value>, Key, Value>(&mut file, &mut cfg.integrity) {
             Ok(map) => {
                 map
             }
@@ -62,7 +62,7 @@ where
             map,
             file_worker: FileWorker::new(file, on_background_error),
             indexes: Vec::new(),
-            integrity,
+            cfg: cfg,
         })
     }
 
@@ -77,7 +77,7 @@ where
         }
 
         // add operation to operations log file
-        let line = file_line_of_insert(&key, &value, &mut self.integrity)?;
+        let line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
         self.file_worker.write(line);
 
         Ok(old_value)
@@ -96,7 +96,7 @@ where
                 index.on_remove(&key, &old_value);
             }
 
-            let line = file_line_of_remove(key, &mut self.integrity)?;
+            let line = file_line_of_remove(key, &mut self.cfg.integrity)?;
             self.file_worker.write(line);
 
             return Ok(Some(old_value.clone()));

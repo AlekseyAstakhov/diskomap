@@ -1,7 +1,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_name = "db/simple_db.txt";
 
-    let mut map = diskomap::BTree::open_or_create(file_name, None)?;
+    let mut map = diskomap::BTree::open_or_create(file_name, diskomap::Cfg::default())?;
     // Using with this map is not much different from using a std BTreeMap or HashMap.
     // This map does not provide a mutable iterator and some mutable functions.
     //
@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(map);
 
     // Open in next time.
-    let mut map = diskomap::BTree::open_or_create(file_name, None)?;
+    let mut map = diskomap::BTree::open_or_create(file_name, diskomap::Cfg::default())?;
     map.remove(&0)?;
     map.remove(&1)?;
     map.insert(0, "Abc".to_string())?;

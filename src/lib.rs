@@ -9,5 +9,6 @@ mod file_worker;
 mod tests;
 
 pub use btree::BTree;
+pub use cfg::Cfg;
 pub use cfg::Integrity;
 pub use file_work::LoadFileError;

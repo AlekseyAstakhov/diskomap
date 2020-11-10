@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use diskomap::cfg::Cfg;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct User {
@@ -7,7 +8,7 @@ struct User {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut users = diskomap::BTree::open_or_create("db/index_db.txt", None)?;
+    let mut users = diskomap::BTree::open_or_create("db/index_db.txt", Cfg::default())?;
 
     // Indexes can be created to quickly retrieve elements by value content,
     // they can be as btree or as hashmap.
