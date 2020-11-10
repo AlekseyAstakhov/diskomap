@@ -48,8 +48,6 @@ pub fn load_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<I
                 },
                 Integrity::Sha256Chain(hash_of_prev) => {
                     let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
-                    dbg!(line_data);
-
                     if sum != hash_data {
                         return Err(LoadFileError::WrongSha256Chain { line_num });
                     }
