@@ -106,22 +106,7 @@ pub fn file_line_of_insert<Key, Value>(key: &Key, value: Value, integrity: &mut 
 {
     let key_val_json = serde_json::to_string(&(&key, &value))?;
     let mut line = "ins ".to_string() + &key_val_json;
-
-    if let Some(integrity) = integrity {
-        match integrity {
-            Integrity::Sha256Chain(prev_hash) => {
-                let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                line = format!("{} {}", line, sum);
-                *prev_hash = sum;
-            },
-            Integrity::Crc32 => {
-                let crc = crc32::checksum_ieee(line.as_bytes());
-                line = format!("{} {}", line, crc);
-            },
-        }
-    }
-
-    line.push('\n');
+    post_process_file_line(&mut line, integrity);
     Ok(line)
 }
 
@@ -131,23 +116,27 @@ pub fn file_line_of_remove<Key>(key: &Key, integrity: &mut Option<Integrity>) ->
 {
     let key_json = serde_json::to_string(key)?;
     let mut line = "rem ".to_string() + &key_json;
+    post_process_file_line(&mut line, integrity);
+    Ok(line)
+}
 
+/// Depending on the settings in 'cfg', it adds a checksum, calculates the blockchain, compresses, encrypts, etc.
+pub fn post_process_file_line(line: &mut String, integrity: &mut Option<Integrity>) {
     if let Some(integrity) = integrity {
         match integrity {
             Integrity::Sha256Chain(prev_hash) => {
                 let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                line = format!("{} {}", line, sum);
+                *line += &format!(" {}", sum);
                 *prev_hash = sum;
             },
             Integrity::Crc32 => {
                 let crc = crc32::checksum_ieee(line.as_bytes());
-                line = format!("{} {}", line, crc);
+                *line += &format!(" {}", crc);
             },
         }
     }
 
     line.push('\n');
-    Ok(line)
 }
 
 /// Create dirs to path if not exist.
