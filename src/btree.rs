@@ -21,7 +21,7 @@ use crate::cfg::Cfg;
 pub struct BTree<Key, Value> {
     /// Map in the RAM.
     map: BTreeMap<Key, Value>,
-    // For append operations to the operations log file in background thread.
+    // For append operations to the history file in background thread.
     file_worker: FileWorker,
 
     /// Created indexes.
@@ -35,7 +35,7 @@ where
     Key: Serialize + DeserializeOwned + Ord + Clone + 'static,
     Value: Serialize + DeserializeOwned + Clone, {
 
-    /// Open/create map with 'operations_log_file'.
+    /// Open/create map with history file 'file_path'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
     pub fn open_or_create(file_path: &str, mut cfg: Cfg) -> Result<Self, LoadFileError> {
@@ -45,7 +45,7 @@ where
 
         file.lock_exclusive()?;
 
-        // load current map from operations log file
+        // load current map from history file
         let map = match load_from_file::<BTreeMap<Key, Value>, Key, Value>(&mut file, &mut cfg.integrity) {
             Ok(map) => {
                 map
@@ -76,14 +76,14 @@ where
             index.on_insert(key.clone(), value.clone(), old_value.clone());
         }
 
-        // add operation to operations log file
+        // add operation to history file
         let line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
         self.file_worker.write(line);
 
         Ok(old_value)
     }
 
-    /// Returns a reference to the value corresponding to the key. No writing to the operations log file.
+    /// Returns a reference to the value corresponding to the key. No writing to the history file.
     pub fn get(&self, key: &Key) -> Option<&Value> {
         self.map.get(key)
     }
@@ -162,7 +162,7 @@ where
         &self.map
     }
 
-    /// Returns the number of elements in the map. No writing to the operations log file.
+    /// Returns the number of elements in the map. No writing to the history file.
     pub fn len(&self) -> usize {
         self.map.len()
     }
