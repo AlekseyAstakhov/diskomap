@@ -1,10 +1,12 @@
-use crate::integrity::{Integrity, blockchain_sha256};
+use crate::cfg::Integrity;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use crc::crc32;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use crate::map_trait::MapTrait;
+use crypto::digest::Digest;
+use crypto::sha2::Sha256;
 
 /// Load from file all operations and make actual map.
 pub fn load_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)

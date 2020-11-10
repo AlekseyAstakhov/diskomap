@@ -1,6 +1,3 @@
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
-
 /// Mechanism of controlling the integrity of stored data in a log file.
 pub enum Integrity {
     // For Sha256 blockchain. Each line in the operations log file will contain
