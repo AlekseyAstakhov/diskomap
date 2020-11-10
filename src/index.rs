@@ -1,15 +1,21 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, RwLock};
 use crate::map_trait::MapTrait;
+use std::marker::PhantomData;
 
 /// The index for getting indexes of the owner map by parts of value.
-#[derive(Clone)]
-pub struct Index<IndexKey, OwnerKey, OwnerValue>  {
-    map: Arc<RwLock<dyn MapTrait<IndexKey, BTreeSet<OwnerKey>>>>,
+pub struct Index<IndexKey, OwnerKey, OwnerValue, Map>
+where Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> {
+    map: Arc<RwLock<Map>>,
     make_index_key_callback: fn(&OwnerValue) -> IndexKey,
+    _phantom: PhantomData<OwnerKey>,
 }
 
-impl<IndexKey, OwnerKey: Ord + Clone, OwnerValue> Index<IndexKey, OwnerKey, OwnerValue> {
+impl<IndexKey, OwnerKey, OwnerValue, Map> Index<IndexKey, OwnerKey, OwnerValue, Map>
+where
+    OwnerKey: Ord + Clone,
+    Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> {
+
     /// Owner keys by custom index. Empty vec if no so index.
     pub fn get(&self, key: &IndexKey) -> Vec<OwnerKey> {
         let mut vec = vec![];
@@ -24,12 +30,11 @@ impl<IndexKey, OwnerKey: Ord + Clone, OwnerValue> Index<IndexKey, OwnerKey, Owne
     }
 
     /// Constructs new Index from custom map and make index callback.
-    pub(crate) fn new<Map>(indexes: Map, make_index_key_callback: fn(&OwnerValue) -> IndexKey) -> Self
-        where Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> + 'static
-    {
+    pub(crate) fn new(indexes: Map, make_index_key_callback: fn(&OwnerValue) -> IndexKey) -> Self {
         Index {
             map: Arc::new(RwLock::new(indexes)),
             make_index_key_callback,
+            _phantom: PhantomData,
         }
     }
 }
@@ -42,7 +47,11 @@ pub(crate) trait UpdateIndex<OwnerKey, OwnerValue> {
     fn on_remove(&self, key: &OwnerKey, value: &OwnerValue);
 }
 
-impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for Index<IndexKey, OwnerKey, OwnerValue> {
+impl<IndexKey, OwnerKey: Ord, OwnerValue, Map> UpdateIndex<OwnerKey, OwnerValue> for Index<IndexKey, OwnerKey, OwnerValue, Map>
+where
+    OwnerKey: Ord,
+    Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> {
+
     /// Implementation of updating of index when insert operation on owner map.
     fn on_insert(&self, btree_key: OwnerKey, value: OwnerValue, old_value: Option<OwnerValue>) {
         let index_key = (self.make_index_key_callback)(&value);
@@ -89,6 +98,19 @@ impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for 
         }
         if need_remove_index {
             map.remove(&index_key);
+        }
+    }
+}
+
+impl<IndexKey, OwnerKey, OwnerValue, Map> Clone for Index<IndexKey, OwnerKey, OwnerValue, Map>
+    where Map: MapTrait<IndexKey, BTreeSet<OwnerKey>> {
+
+    /// Manually clone because #[derive(Clone)] can't work with PhantomData
+    fn clone(&self) -> Self {
+        Index {
+            map: self.map.clone(),
+            make_index_key_callback: self.make_index_key_callback,
+            _phantom: PhantomData,
         }
     }
 }

@@ -16,9 +16,8 @@ use crate::file_work::{
 };
 use crate::map_trait::MapTrait;
 
-/// A map based on a B-Tree with the operations log file on the disk.
-/// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
-/// for restoring actual data after restart application.
+/// Container with storing all changes history to the file based on BTree.
+/// Restores own state from the file when creating.
 pub struct BTree<Key, Value> {
     /// Map in the RAM.
     map: BTreeMap<Key, Value>,
@@ -34,8 +33,8 @@ pub struct BTree<Key, Value> {
 impl<Key, Value: 'static> BTree<Key, Value>
 where
     Key: Serialize + DeserializeOwned + Ord + Clone + 'static,
-    Value: Serialize + DeserializeOwned + Clone,
-{
+    Value: Serialize + DeserializeOwned + Clone, {
+
     /// Open/create map with 'operations_log_file'.
     /// If file is exist then load map from file.
     /// If file not is not exist then create new file.
@@ -111,10 +110,8 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_btree_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-        -> Index<IndexKey, Key, Value>
-        where
-            IndexKey: Clone + Ord + 'static
-    {
+        -> Index<IndexKey, Key, Value, BTreeMap<IndexKey, BTreeSet<Key>>>
+    where IndexKey: Clone + Ord + 'static {
         self.create_index::<IndexKey, BTreeMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
@@ -123,10 +120,8 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-        -> Index<IndexKey, Key, Value>
-    where
-        IndexKey: Clone + Hash + Eq + 'static,
-    {
+        -> Index<IndexKey, Key, Value, HashMap<IndexKey, BTreeSet<Key>>>
+    where IndexKey: Clone + Hash + Eq + 'static, {
         self.create_index::<IndexKey, HashMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
@@ -135,11 +130,11 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_index<IndexKey, Map>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-                                          -> Index<IndexKey, Key, Value>
-        where
-            IndexKey: Clone + Eq + 'static,
-            Map: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static,
-    {
+                                          -> Index<IndexKey, Key, Value, Map>
+    where
+        IndexKey: Clone + Eq + 'static,
+        Map: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static, {
+
         let mut index_map = Map::default();
 
         for (key, val) in self.map.iter() {
