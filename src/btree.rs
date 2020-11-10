@@ -1,7 +1,7 @@
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::OpenOptions;
 use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
@@ -14,7 +14,7 @@ use crate::file_work::{
     create_dirs_to_path_if_not_exist,
     LoadFileError
 };
-use crate::map_trait::{MapTrait, BtreeMapWrapper, HashMapWrapper};
+use crate::map_trait::MapTrait;
 
 /// A map based on a B-Tree with the operations log file on the disk.
 /// Used in a similar way as a BTreeMap, but store to file log of operations as insert and remove
@@ -115,7 +115,7 @@ where
         where
             IndexKey: Clone + Ord + 'static
     {
-        self.create_index::<IndexKey, BtreeMapWrapper<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
+        self.create_index::<IndexKey, BTreeMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
     /// Create index by value based on std::collections::HashMap.
@@ -127,7 +127,7 @@ where
     where
         IndexKey: Clone + Hash + Eq + 'static,
     {
-        self.create_index::<IndexKey, HashMapWrapper<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
+        self.create_index::<IndexKey, HashMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
     /// Create index by value.
