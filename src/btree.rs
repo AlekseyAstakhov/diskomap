@@ -47,7 +47,7 @@ where
         file.lock_exclusive()?;
 
         // load current map from operations log file
-        let map = match load_from_file(&mut file, &mut integrity) {
+        let map = match load_from_file::<BTreeMap<Key, Value>, Key, Value>(&mut file, &mut integrity) {
             Ok(map) => {
                 map
             }

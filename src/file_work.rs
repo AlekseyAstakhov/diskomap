@@ -1,19 +1,20 @@
 use crate::integrity::{Integrity, blockchain_sha256};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::collections::BTreeMap;
 use crc::crc32;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use crate::map_trait::MapTrait;
 
 /// Load from file all operations and make actual map.
-pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
-    -> Result<BTreeMap<Key, Value>, LoadFileError>
+pub fn load_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
+    -> Result<Map, LoadFileError>
     where
         Key: std::cmp::Ord + DeserializeOwned,
-        Value: DeserializeOwned
+        Value: DeserializeOwned,
+        Map: MapTrait<Key, Value> + Default,
 {
-    let mut map = BTreeMap::new();
+    let mut map = Map::default();
     let mut reader = BufReader::new(file);
     let mut line = String::with_capacity(150);
     let mut line_num = 1;
@@ -43,6 +44,7 @@ pub fn load_from_file<Key, Value>(file: &mut File, integrity: &mut Option<Integr
                     }
                 },
             }
+
             line_data
         } else {
             &line[..]
