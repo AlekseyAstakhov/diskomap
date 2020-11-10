@@ -14,13 +14,12 @@ pub trait MapTrait<Key, Value> {
     fn remove(&mut self, key: &Key) -> Option<Value>;
 }
 
-/// For the index that uses the BTreeMap.
+/// std::collections::BTreeMap wrapper.
+/// Need because i was not possible to implement the trait directly for std::collections::BTreeMap wrapper.
 pub struct BtreeMapWrapper<IndexKey, OwnerKey> {
     pub map: BTreeMap<IndexKey, OwnerKey>
 }
 
-/// std::collections::BTreeMap wrapper.
-/// Need because i was not possible to implement the trait directly for std::collections::BTreeMap wrapper.
 impl<IndexKey: Ord, OwnerKey> Default for BtreeMapWrapper<IndexKey, OwnerKey> {
     fn default() -> Self {
         BtreeMapWrapper { map: BTreeMap::new() }
