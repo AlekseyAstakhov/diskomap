@@ -1,8 +1,10 @@
 /// Config of map with storing history to the file.
-#[derive(Clone)]
 pub struct Cfg {
     /// Mechanism of controlling the integrity of stored data in a history file.
-    pub integrity: Option<Integrity>
+    pub integrity: Option<Integrity>,
+    /// Callback for receive a file write error.
+    /// If the callback from the callback is None, then errors are ignored..
+    pub on_write_error: Option<Box<dyn Fn(std::io::Error) + Send>>,
 }
 
 /// Mechanism of controlling the integrity of stored data in a history file.
@@ -20,6 +22,7 @@ impl Default for Cfg {
     fn default() -> Self {
         Cfg {
             integrity: None,
+            on_write_error: None,
         }
     }
 }

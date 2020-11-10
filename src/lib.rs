@@ -9,6 +9,7 @@ mod file_worker;
 mod tests;
 
 pub use map_with_file::BTreeMap;
+pub use map_with_file::HashMap;
 pub use cfg::Cfg;
 pub use cfg::Integrity;
 pub use file_work::LoadFileError;

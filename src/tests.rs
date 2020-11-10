@@ -178,10 +178,10 @@ mod tests {
         use std::fs::OpenOptions;
         use crate::cfg::*;
 
-        let cfg = Cfg {integrity: Some(Integrity::Crc32)};
-
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Crc32);
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let mut map = BTreeMap::open_or_create(&file, cfg.clone())?;
+        let mut map = BTreeMap::open_or_create(&file, cfg)?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -190,7 +190,9 @@ mod tests {
         let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\n";
         assert_eq!(file_content, expected_content);
 
-        let mut map: HashMap<i32, String> = HashMap::open_or_create(&file, cfg.clone())?;
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Crc32);
+        let mut map: HashMap<i32, String> = HashMap::open_or_create(&file, cfg)?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -202,6 +204,9 @@ mod tests {
         let bad_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949338173\nins [5,\"c\"] 1023287335\n";
         f.write_all(bad_content.as_bytes())?;
         drop(f);
+
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Crc32);
         let res: Result<BTreeMap<i32, String>, LoadFileError> = BTreeMap::open_or_create(&file, cfg);
         let mut crc_is_correct = true;
         if let Err(res) = res {
@@ -222,12 +227,12 @@ mod tests {
         use crate::BTreeMap;
         use std::fs::OpenOptions;
 
-        let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e";
-
-        let cfg = Cfg { integrity: Some(Integrity::Sha256Chain(inital_hash.to_string())) };
+        let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e".to_string();
 
         let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
-        let mut map = BTreeMap::open_or_create(&file, cfg.clone())?;
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha256Chain(inital_hash.clone()));
+        let mut map = BTreeMap::open_or_create(&file, cfg)?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
         map.insert(5, "c".to_string())?;
@@ -240,7 +245,9 @@ mod tests {
 
         assert_eq!(file_content, expected);
 
-        let mut map: BTreeMap<i32, String> = BTreeMap::open_or_create(&file, cfg.clone())?;
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha256Chain(inital_hash.clone()));
+        let mut map: BTreeMap<i32, String> = BTreeMap::open_or_create(&file, cfg)?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -259,6 +266,9 @@ mod tests {
 
         f.write_all(bad_content.as_bytes())?;
         drop(f);
+
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha256Chain(inital_hash.clone()));
         let res: Result<HashMap<i32, String>, LoadFileError> = HashMap::open_or_create(&file, cfg);
         let mut crc_is_correct = true;
         if let Err(res) = res {

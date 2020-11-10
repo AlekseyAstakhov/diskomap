@@ -67,11 +67,9 @@ where
             }
         };
 
-        let on_background_error = None;
-
         Ok(MapWithFile {
             map,
-            file_worker: FileWorker::new(file, on_background_error),
+            file_worker: FileWorker::new(file, cfg.on_write_error.take()),
             indexes: Vec::new(),
             cfg: cfg,
         })

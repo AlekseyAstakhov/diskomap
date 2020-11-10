@@ -19,13 +19,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // All non-mutable functions of the original map are also available.
     let count = map.map().len();
-    println!("count {}", count);
+    println!("Items count {}", count);
 
     // The file will be closed here.
     drop(map);
 
-    // Open in next time.
-    let mut map = diskomap::BTreeMap::open_or_create(file_name, diskomap::Cfg::default())?;
+    // Open in next time in tis time as HashMap.
+    let mut map = diskomap::HashMap::open_or_create(file_name, diskomap::Cfg::default())?;
     map.remove(&0)?;
     map.remove(&1)?;
     map.insert(0, "Abc".to_string())?;
