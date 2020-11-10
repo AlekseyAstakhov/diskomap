@@ -8,7 +8,7 @@ struct User {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut users = diskomap::BTree::open_or_create("db/index_db.txt", Cfg::default())?;
+    let mut users = diskomap::BTreeMap::open_or_create("db/index_db.txt", Cfg::default())?;
 
     // Indexes can be created to quickly retrieve elements by value content,
     // they can be as btree or as hashmap.

@@ -1,7 +1,7 @@
 use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
@@ -16,24 +16,35 @@ use crate::file_work::{
 use crate::map_trait::MapTrait;
 use crate::cfg::Cfg;
 
-/// Container with storing all changes history to the file based on BTree.
+/// Map with storing all changes history to the file.
 /// Restores own state from the file when creating.
-pub struct BTree<Key, Value> {
+/// Based on std::collections::BTreeMap.
+pub type BTreeMap<Key, Value> = MapWithFile<Key, Value, std::collections::BTreeMap<Key, Value>>;
+
+/// Map with storing all changes history to the file.
+/// Restores own state from the file when creating.
+/// Based on std::collections::HashMap.
+pub type HashMap<Key, Value> = MapWithFile<Key, Value, std::collections::HashMap<Key, Value>>;
+
+/// Map container with storing all changes history to the file.
+/// Restores own state from the file when creating.
+pub struct MapWithFile<Key, Value, Map>
+where Map: MapTrait<Key, Value>  {
     /// Map in the RAM.
-    map: BTreeMap<Key, Value>,
+    map: Map,
     // For append operations to the history file in background thread.
     file_worker: FileWorker,
-
     /// Created indexes.
     indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
     /// Config.
     cfg: Cfg,
 }
 
-impl<Key, Value: 'static> BTree<Key, Value>
+impl<Key, Value: 'static, Map> MapWithFile<Key, Value, Map>
 where
     Key: Serialize + DeserializeOwned + Ord + Clone + 'static,
-    Value: Serialize + DeserializeOwned + Clone, {
+    Value: Serialize + DeserializeOwned + Clone,
+    Map: MapTrait<Key, Value> + Default {
 
     /// Open/create map with history file 'file_path'.
     /// If file is exist then load map from file.
@@ -46,7 +57,7 @@ where
         file.lock_exclusive()?;
 
         // load current map from history file
-        let map = match load_from_file::<BTreeMap<Key, Value>, Key, Value>(&mut file, &mut cfg.integrity) {
+        let map = match load_from_file::<Map, Key, Value>(&mut file, &mut cfg.integrity) {
             Ok(map) => {
                 map
             }
@@ -58,7 +69,7 @@ where
 
         let on_background_error = None;
 
-        Ok(BTree {
+        Ok(MapWithFile {
             map,
             file_worker: FileWorker::new(file, on_background_error),
             indexes: Vec::new(),
@@ -110,9 +121,9 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_btree_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-        -> Index<IndexKey, Key, Value, BTreeMap<IndexKey, BTreeSet<Key>>>
+        -> Index<IndexKey, Key, Value, std::collections::BTreeMap<IndexKey, BTreeSet<Key>>>
     where IndexKey: Clone + Ord + 'static {
-        self.create_index::<IndexKey, BTreeMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
+        self.create_index::<IndexKey, std::collections::BTreeMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
     /// Create index by value based on std::collections::HashMap.
@@ -120,24 +131,24 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-        -> Index<IndexKey, Key, Value, HashMap<IndexKey, BTreeSet<Key>>>
+        -> Index<IndexKey, Key, Value, std::collections::HashMap<IndexKey, BTreeSet<Key>>>
     where IndexKey: Clone + Hash + Eq + 'static, {
-        self.create_index::<IndexKey, HashMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
+        self.create_index::<IndexKey, std::collections::HashMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
     /// Create index by value.
     /// 'make_index_key_callback' function is called during all operations of inserting,
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
-    pub fn create_index<IndexKey, Map>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-                                          -> Index<IndexKey, Key, Value, Map>
+    pub fn create_index<IndexKey, MapOfIndex>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
+                                              -> Index<IndexKey, Key, Value, MapOfIndex>
     where
         IndexKey: Clone + Eq + 'static,
-        Map: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static, {
+        MapOfIndex: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static, {
 
-        let mut index_map = Map::default();
+        let mut index_map = MapOfIndex::default();
 
-        for (key, val) in self.map.iter() {
+        self.map.for_each(|key, val| {
             let index_key = make_index_key_callback(&val);
             match index_map.get_mut(&index_key) {
                 Some(keys) => {
@@ -149,7 +160,7 @@ where
                     index_map.insert(index_key, set);
                 }
             }
-        }
+        });
 
         let index = Index::new(index_map, make_index_key_callback);
         self.indexes.push(Box::new(index.clone()));
@@ -157,23 +168,8 @@ where
         index
     }
 
-    /// Returns reference to inner map.
-    pub fn map(&self) -> &BTreeMap<Key, Value> {
+    /// Returns a reference to an used map.
+    pub fn map(&self) -> &Map {
         &self.map
-    }
-
-    /// Returns the number of elements in the map. No writing to the history file.
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    /// Returns `true` if the map contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns `true` if the map in memory contains a value for the specified key.
-    pub fn contains_key(&self, key: &Key) -> bool {
-        self.map.contains_key(key)
     }
 }
