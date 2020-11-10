@@ -7,6 +7,7 @@ use serde::Serialize;
 use crate::map_trait::MapTrait;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
+use crypto::sha1::Sha1;
 
 /// Load from file all operations and make actual map.
 pub fn load_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
@@ -32,18 +33,27 @@ pub fn load_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<I
             let hash_data = line[data_index + 1..line.len()].trim_end();
 
             match integrity {
-                Integrity::Sha256Chain(hash_of_prev) => {
-                    let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
-                    if sum != hash_data {
-                        return Err(LoadFileError::WrongSha256Chain { line_num });
-                    }
-                    *hash_of_prev = sum;
-                },
                 Integrity::Crc32 => {
                     let crc = crc32::checksum_ieee(line_data.as_bytes());
                     if crc.to_string() != hash_data {
                         return Err(LoadFileError::WrongCrc32 { line_num });
                     }
+                },
+                Integrity::Sha1Chain(hash_of_prev) => {
+                    let sum = blockchain_sha1(&hash_of_prev, line_data.as_bytes());
+                    if sum != hash_data {
+                        return Err(LoadFileError::WrongSha1Chain { line_num });
+                    }
+                    *hash_of_prev = sum;
+                },
+                Integrity::Sha256Chain(hash_of_prev) => {
+                    let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
+                    dbg!(line_data);
+
+                    if sum != hash_data {
+                        return Err(LoadFileError::WrongSha256Chain { line_num });
+                    }
+                    *hash_of_prev = sum;
                 },
             }
 
@@ -90,6 +100,8 @@ pub enum LoadFileError {
     FileError(std::io::Error),
     /// There is no expected checksum or hash in the log file line when integrity used.
     NoExpectedHash { line_num: usize },
+    /// Wrong Sha1 of log file line data when Sha256 blockchain integrity used.
+    WrongSha1Chain { line_num: usize, },
     /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
     WrongSha256Chain { line_num: usize, },
     /// Wrong crc32 of log file line data when crc32 integrity used.
@@ -122,14 +134,19 @@ where Key: Serialize {
 pub fn post_process_file_line(line: &mut String, integrity: &mut Option<Integrity>) {
     if let Some(integrity) = integrity {
         match integrity {
+            Integrity::Crc32 => {
+                let crc = crc32::checksum_ieee(line.as_bytes());
+                *line += &format!(" {}", crc);
+            },
+            Integrity::Sha1Chain(prev_hash) => {
+                let sum = blockchain_sha1(&prev_hash, line.as_bytes());
+                *line += &format!(" {}", sum);
+                *prev_hash = sum;
+            },
             Integrity::Sha256Chain(prev_hash) => {
                 let sum = blockchain_sha256(&prev_hash, line.as_bytes());
                 *line += &format!(" {}", sum);
                 *prev_hash = sum;
-            },
-            Integrity::Crc32 => {
-                let crc = crc32::checksum_ieee(line.as_bytes());
-                *line += &format!(" {}", crc);
             },
         }
     }
@@ -149,7 +166,7 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
     Ok(())
 }
 
-/// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
+/// Returns hash of significant data of current line of file (hash of sum of prev hash and hash of current line data).
 pub fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.input(line_data);
@@ -158,6 +175,19 @@ pub fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
     buf.extend_from_slice(prev_hash.as_bytes());
     buf.extend_from_slice(&current_data_hash.as_bytes());
     let mut hasher = Sha256::new();
+    hasher.input(&buf);
+    hasher.result_str()
+}
+
+/// Returns hash of significant data of current line of file (hash of sum of prev hash and hash of current line data).
+pub fn blockchain_sha1(prev_hash: &str, line_data: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    hasher.input(line_data);
+    let current_data_hash = hasher.result_str();
+    let mut buf = Vec::new(); // need optimize to [u8; 512]
+    buf.extend_from_slice(prev_hash.as_bytes());
+    buf.extend_from_slice(&current_data_hash.as_bytes());
+    let mut hasher = Sha1::new();
     hasher.input(&buf);
     hasher.result_str()
 }

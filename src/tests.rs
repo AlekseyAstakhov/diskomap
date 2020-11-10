@@ -180,7 +180,7 @@ mod tests {
 
         let mut cfg = Cfg::default();
         cfg.integrity = Some(Integrity::Crc32);
-        let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
+        let file = tempdir()?.path().join("integrity_crc32_test.txt").to_str().unwrap().to_string();
         let mut map = BTreeMap::open_or_create(&file, cfg)?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
@@ -212,6 +212,68 @@ mod tests {
         if let Err(res) = res {
             if let LoadFileError::WrongCrc32 { line_num } = res {
                     if line_num == 2 {
+                    crc_is_correct = false;
+                }
+            }
+        }
+        assert!(!crc_is_correct);
+
+        Ok(())
+    }
+
+    #[test]
+    fn sha1_chain_integrity() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::Integrity;
+        use crate::BTreeMap;
+        use std::fs::OpenOptions;
+
+        let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e".to_string();
+
+        let file = tempdir()?.path().join("integrity_sha1_test.txt").to_str().unwrap().to_string();
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha1Chain(inital_hash.clone()));
+        let mut map = BTreeMap::open_or_create(&file, cfg)?;
+        map.insert(0, "a".to_string())?;
+        map.insert(3, "b".to_string())?;
+        map.insert(5, "c".to_string())?;
+        drop(map);
+
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected = "ins [0,\"a\"] 39ad924c509a2b3088e863b6c1b33c531a283cd4\n\
+                              ins [3,\"b\"] 1aba23bf1cabde44fbff21f16b68e0f4682788e6\n\
+                              ins [5,\"c\"] 9bc4ab88ecc1e3496a349dfc394f23241172fe2d\n";
+
+        assert_eq!(file_content, expected);
+
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha1Chain(inital_hash.clone()));
+        let mut map: BTreeMap<i32, String> = BTreeMap::open_or_create(&file, cfg)?;
+        map.remove(&3)?;
+        drop(map);
+        let file_content = std::fs::read_to_string(&file)?;
+        let expected = "ins [0,\"a\"] 39ad924c509a2b3088e863b6c1b33c531a283cd4\n\
+                              ins [3,\"b\"] 1aba23bf1cabde44fbff21f16b68e0f4682788e6\n\
+                              ins [5,\"c\"] 9bc4ab88ecc1e3496a349dfc394f23241172fe2d\n\
+                              rem 3 0d156c194461cb5efc8a8bf3a3e573d8afdc211a\n";
+
+        assert_eq!(file_content, expected);
+
+        let mut f = OpenOptions::new().read(true).write(true).create(true).open(&file)?;
+        // wrong 1aba23bf1cabde44fcff21f16b68e0f4682788e6
+        let bad_content = "ins [0,\"a\"] 39ad924c509a2b3088e863b6c1b33c531a283cd4\n\
+                              ins [3,\"b\"] 1aba23bf1cabde44fcff21f16b68e0f4682788e6\n\
+                              ins [5,\"c\"] 9bc4ab88ecc1e3496a349dfc394f23241172fe2d\n";
+
+        f.write_all(bad_content.as_bytes())?;
+        drop(f);
+
+        let mut cfg = Cfg::default();
+        cfg.integrity = Some(Integrity::Sha1Chain(inital_hash.clone()));
+        let res: Result<HashMap<i32, String>, LoadFileError> = HashMap::open_or_create(&file, cfg);
+        let mut crc_is_correct = true;
+        if let Err(res) = res {
+            if let LoadFileError::WrongSha1Chain { line_num } = res {
+                if line_num == 2 {
                     crc_is_correct = false;
                 }
             }
