@@ -84,7 +84,7 @@ where
         Ok(old_value)
     }
 
-    /// Get value by key from the map in RAM. No writing to the operations log file.
+    /// Returns a reference to the value corresponding to the key. No writing to the operations log file.
     pub fn get(&self, key: &Key) -> Option<&Value> {
         self.map.get(key)
     }
