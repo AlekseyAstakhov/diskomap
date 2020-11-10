@@ -9,16 +9,3 @@ pub enum Integrity {
     // crc32 (ieee) checksum of operation and data for each line in the operations log file.
     Crc32,
 }
-
-/// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
-pub fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.input(line_data);
-    let current_data_hash = hasher.result_str();
-    let mut buf = Vec::new(); // need optimize to [u8; 512]
-    buf.extend_from_slice(prev_hash.as_bytes());
-    buf.extend_from_slice(&current_data_hash.as_bytes());
-    let mut hasher = Sha256::new();
-    hasher.input(&buf);
-    hasher.result_str()
-}

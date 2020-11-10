@@ -160,6 +160,19 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
     Ok(())
 }
 
+/// Returns hash of current log line (hash of sum of prev hash and hash of current line data).
+pub fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.input(line_data);
+    let current_data_hash = hasher.result_str();
+    let mut buf = Vec::new(); // need optimize to [u8; 512]
+    buf.extend_from_slice(prev_hash.as_bytes());
+    buf.extend_from_slice(&current_data_hash.as_bytes());
+    let mut hasher = Sha256::new();
+    hasher.input(&buf);
+    hasher.result_str()
+}
+
 impl From<std::io::Error> for LoadFileError {
     fn from(err: std::io::Error) -> Self {
         LoadFileError::FileError(err)
