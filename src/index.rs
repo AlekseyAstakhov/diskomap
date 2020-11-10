@@ -6,8 +6,11 @@ use std::marker::PhantomData;
 /// The index for getting indexes of the owner map by parts of value.
 pub struct Index<IndexKey, OwnerKey, OwnerValue, SelfMap>
 where SelfMap: MapTrait<IndexKey, BTreeSet<OwnerKey>> {
+    /// Indexes of owner map by index keys.
     map: Arc<RwLock<SelfMap>>,
+    /// Make index callback.
     make_index_key_callback: fn(&OwnerValue) -> IndexKey,
+    /// Need for avoid "unused parameter" compile error.
     _phantom: PhantomData<OwnerKey>,
 }
 
