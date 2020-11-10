@@ -102,8 +102,7 @@ pub enum LoadFileError {
 
 /// Make line with insert operation for write to file.
 pub fn file_line_of_insert<Key, Value>(key: &Key, value: Value, integrity: &mut Option<Integrity>) -> Result<String, serde_json::Error>
-    where Key: Serialize, Value: Serialize
-{
+where Key: Serialize, Value: Serialize {
     let key_val_json = serde_json::to_string(&(&key, &value))?;
     let mut line = "ins ".to_string() + &key_val_json;
     post_process_file_line(&mut line, integrity);
@@ -112,8 +111,7 @@ pub fn file_line_of_insert<Key, Value>(key: &Key, value: Value, integrity: &mut 
 
 /// Make line with remove operation for write to file.
 pub fn file_line_of_remove<Key>(key: &Key, integrity: &mut Option<Integrity>) -> Result<String, serde_json::Error>
-    where Key: Serialize
-{
+where Key: Serialize {
     let key_json = serde_json::to_string(key)?;
     let mut line = "rem ".to_string() + &key_json;
     post_process_file_line(&mut line, integrity);
