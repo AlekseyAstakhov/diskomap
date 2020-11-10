@@ -5,74 +5,73 @@ mod tests {
     use crate::cfg::Cfg;
     use std::io::Write;
     use crate::file_work::LoadFileError;
+    use crate::map_with_file::HashMap;
 
     #[test]
     fn common() -> Result<(), Box<dyn std::error::Error>> {
         // new file
         let file = tempdir()?.path().join("btree_test.txt").to_str().unwrap().to_string();
-        {
-            let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
-            map.insert((), ())?;
-        }
+        let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
+        map.insert((), ())?;
+        drop(map);
+
         // after restart
-        {
-            let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
-            assert_eq!(Some(&()), map.get(&()));
-            map.insert((), ())?;
-            assert_eq!(1, map.map().len());
-            map.insert((), ())?;
-            assert_eq!(1, map.map().len());
-            map.insert((), ())?;
-            assert_eq!(1, map.map().len());
-            assert_eq!(Some(&()), map.map().get(&()));
-            map.remove(&())?;
-            assert_eq!(0, map.map().len());
-        }
+        let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
+        assert_eq!(Some(&()), map.get(&()));
+        map.insert((), ())?;
+        assert_eq!(1, map.map().len());
+        map.insert((), ())?;
+        assert_eq!(1, map.map().len());
+        map.insert((), ())?;
+        assert_eq!(1, map.map().len());
+        assert_eq!(Some(&()), map.map().get(&()));
+        map.remove(&())?;
+        assert_eq!(0, map.map().len());
+        drop(map);
 
         // new log file
         let file = tempdir()?.path().join("btree_test2.txt").to_str().unwrap().to_string();
-        {
-            let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
-            map.insert("key 1".to_string(), 1)?;
-            map.insert("key 2".to_string(), 2)?;
-            map.insert("key 3".to_string(), 3)?;
-            map.insert("key 4".to_string(), 4)?;
-            map.insert("key 5".to_string(), 5)?;
-            assert_eq!(5, map.map().len());
-            assert_eq!(Some(&3), map.get(&"key 3".to_string()));
-            map.remove(&"key 1".to_string())?;
-            map.remove(&"key 4".to_string())?;
-            map.insert("key 6".to_string(), 6)?;
-            map.insert("key 1".to_string(), 100)?;
-            map.remove(&"key 2".to_string())?;
-            map.insert("key 7".to_string(), 7)?;
-            let keys = map.map().keys().cloned().collect::<Vec<String>>();
-            assert_eq!(keys, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            let values = map.map().values().cloned().collect::<Vec<i32>>();
-            assert_eq!(values, vec![100, 3, 5, 6, 7]);
-        }
+        let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
+        map.insert("key 1".to_string(), 1)?;
+        map.insert("key 2".to_string(), 2)?;
+        map.insert("key 3".to_string(), 3)?;
+        map.insert("key 4".to_string(), 4)?;
+        map.insert("key 5".to_string(), 5)?;
+        assert_eq!(5, map.map().len());
+        assert_eq!(Some(&3), map.get(&"key 3".to_string()));
+        map.remove(&"key 1".to_string())?;
+        map.remove(&"key 4".to_string())?;
+        map.insert("key 6".to_string(), 6)?;
+        map.insert("key 1".to_string(), 100)?;
+        map.remove(&"key 2".to_string())?;
+        map.insert("key 7".to_string(), 7)?;
+        let keys = map.map().keys().cloned().collect::<Vec<String>>();
+        assert_eq!(keys, vec!["key 1".to_string(), "key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+        let values = map.map().values().cloned().collect::<Vec<i32>>();
+        assert_eq!(values, vec![100, 3, 5, 6, 7]);
+        drop(map);
+
         // after restart
-        {
-            let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
-            assert_eq!(5, map.map().len());
-            assert_eq!(Some(&100), map.get(&"key 1".to_string()));
-            assert_eq!(None, map.get(&"key 4".to_string()));
-            assert_eq!(None, map.get(&"key 2".to_string()));
-            map.insert("key 3".to_string(), 33)?;
-            assert_eq!(Some(&33), map.get(&"key 3".to_string()));
-            map.remove(&"key 1".to_string())?;
-        }
+        let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
+        assert_eq!(5, map.map().len());
+        assert_eq!(Some(&100), map.get(&"key 1".to_string()));
+        assert_eq!(None, map.get(&"key 4".to_string()));
+        assert_eq!(None, map.get(&"key 2".to_string()));
+        map.insert("key 3".to_string(), 33)?;
+        assert_eq!(Some(&33), map.get(&"key 3".to_string()));
+        map.remove(&"key 1".to_string())?;
+        drop(map);
+
         // after restart
-        {
-            let map = BTreeMap::open_or_create(&file, Cfg::default())?;
-            assert_eq!(4, map.map().len());
-            assert_eq!(Some(&33), map.get(&"key 3".to_string()));
-            assert_eq!(None, map.get(&"key 1".to_string()));
-            let keys = map.map().keys().cloned().collect::<Vec<String>>();
-            assert_eq!(keys, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
-            let values = map.map().values().cloned().collect::<Vec<i32>>();
-            assert_eq!(values, vec![33, 5, 6, 7]);
-        }
+        let map = BTreeMap::open_or_create(&file, Cfg::default())?;
+        assert_eq!(4, map.map().len());
+        assert_eq!(Some(&33), map.get(&"key 3".to_string()));
+        assert_eq!(None, map.get(&"key 1".to_string()));
+        let keys = map.map().keys().cloned().collect::<Vec<String>>();
+        assert_eq!(keys, vec!["key 3".to_string(), "key 5".to_string(), "key 6".to_string(), "key 7".to_string()]);
+        let values = map.map().values().cloned().collect::<Vec<i32>>();
+        assert_eq!(values, vec![33, 5, 6, 7]);
+        drop(map);
 
         Ok(())
     }
@@ -191,7 +190,7 @@ mod tests {
         let expected_content = "ins [0,\"a\"] 1874290170\nins [3,\"b\"] 3949308173\nins [5,\"c\"] 1023287335\n";
         assert_eq!(file_content, expected_content);
 
-        let mut map: BTreeMap<i32, String> = BTreeMap::open_or_create(&file, cfg.clone())?;
+        let mut map: HashMap<i32, String> = HashMap::open_or_create(&file, cfg.clone())?;
         map.remove(&3)?;
         drop(map);
         let file_content = std::fs::read_to_string(&file)?;
@@ -260,7 +259,7 @@ mod tests {
 
         f.write_all(bad_content.as_bytes())?;
         drop(f);
-        let res: Result<BTreeMap<i32, String>, LoadFileError> = BTreeMap::open_or_create(&file, cfg);
+        let res: Result<HashMap<i32, String>, LoadFileError> = HashMap::open_or_create(&file, cfg);
         let mut crc_is_correct = true;
         if let Err(res) = res {
             if let LoadFileError::WrongSha256Chain { line_num } = res {
