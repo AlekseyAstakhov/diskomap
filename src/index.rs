@@ -34,6 +34,14 @@ impl<IndexKey, OwnerKey: Ord + Clone, OwnerValue> Index<IndexKey, OwnerKey, Owne
     }
 }
 
+/// Trait for update the index when the owner map content changes.
+pub(crate) trait UpdateIndex<OwnerKey, OwnerValue> {
+    /// Updates index when insert or update operation on map.
+    fn on_insert(&self, key: OwnerKey, value: OwnerValue, old_value: Option<OwnerValue>);
+    /// Updates index when remove operation on map.
+    fn on_remove(&self, key: &OwnerKey, value: &OwnerValue);
+}
+
 impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for Index<IndexKey, OwnerKey, OwnerValue> {
     /// Implementation of updating of index when insert operation on owner map.
     fn on_insert(&self, btree_key: OwnerKey, value: OwnerValue, old_value: Option<OwnerValue>) {
@@ -83,12 +91,4 @@ impl<IndexKey, OwnerKey: Ord, OwnerValue> UpdateIndex<OwnerKey, OwnerValue> for 
             map.remove(&index_key);
         }
     }
-}
-
-/// Trait for update the index when the owner map content changes.
-pub(crate) trait UpdateIndex<OwnerKey, OwnerValue> {
-    /// Updates index when insert or update operation on map.
-    fn on_insert(&self, key: OwnerKey, value: OwnerValue, old_value: Option<OwnerValue>);
-    /// Updates index when remove operation on map.
-    fn on_remove(&self, key: &OwnerKey, value: &OwnerValue);
 }
