@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The file will be closed here.
     drop(map);
 
-    // Open in next time in tis time as HashMap.
+    // Open in next time as HashMap.
     let mut map = diskomap::HashMap::open_or_create(file_name, diskomap::Cfg::default())?;
     map.remove(&0)?;
     map.remove(&1)?;
