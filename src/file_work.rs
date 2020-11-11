@@ -343,14 +343,23 @@ impl std::error::Error for LoadFileError {}
 /// Error convertation of operations history file.
 #[derive(Debug)]
 pub enum ConvertError {
+    /// When can't open file that need convert.
     OpenSrcFileError(std::io::Error),
+    /// When can't open target file where to save.
     OpenDstFileError(std::io::Error),
+    /// When can't clear target file before conversion.
     ClearDstFileError,
+    /// When can't exclusive lock opened source file.
     LockSrcFileError,
+    /// When can't exclusive lock opened target file.
     LockDstFileError,
+    /// Json error when serialize key or value.
     SerializeError(serde_json::Error),
-    WriteToFileError(std::io::Error),
+    /// Error of reading source file.
     LoadFileError(LoadFileError),
+    /// When write error to the target file.
+    WriteToFileError(std::io::Error),
+    /// Error of creating tmp file when source and target file has same path.
     TmpFileError,
 }
 
