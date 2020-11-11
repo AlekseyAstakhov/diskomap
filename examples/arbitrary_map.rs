@@ -3,14 +3,17 @@ use diskomap::map_trait::MapTrait;
 use diskomap::map_with_file::MapWithFile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file_name = "db/alternative_map.txt";
+    let file_name = "db/arbitrary_map.txt";
 
     // VecMapWithFile based on vector_map::VecMap
     let mut map = VecMapWithFile::open_or_create(file_name, diskomap::Cfg::default())?;
 
     map.insert(0, "Masha".to_string())?;
     map.insert(1, "Sasha".to_string())?;
-    map.insert(0, "Natasha".to_string())?;
+    map.insert(3, "Natasha".to_string())?;
+    map.remove(&1)?;
+
+    drop(map);
 
     println!("File content:");
     print!("{}", std::fs::read_to_string(file_name)?);
