@@ -1,13 +1,13 @@
 /// Config of map with storing history to the file.
 pub struct Cfg {
-    /// Mechanism of controlling the integrity of stored data in a history file.
+    /// Method of controlling the integrity of stored data in a history file.
     pub integrity: Option<Integrity>,
     /// Callback for receive a file write error.
     /// If the callback from the callback is None, then errors are ignored..
     pub on_write_error: Option<Box<dyn Fn(std::io::Error) + Send>>,
 }
 
-/// Mechanism of controlling the integrity of stored data in a history file.
+/// Method of controlling the integrity of stored data in a history file.
 #[derive(Clone)]
 pub enum Integrity {
     /// crc32 (ieee) checksum of operation and data for each line in the operations history file.
