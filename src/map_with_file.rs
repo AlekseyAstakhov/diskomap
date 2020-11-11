@@ -7,7 +7,7 @@ use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
 use crate::file_worker::FileWorker;
 use crate::file_work::{
-    load_from_file,
+    map_from_file,
     file_line_of_insert,
     file_line_of_remove,
     create_dirs_to_path_if_not_exist,
@@ -53,19 +53,10 @@ where
         create_dirs_to_path_if_not_exist(file_path)?;
 
         let mut file = OpenOptions::new().read(true).write(true).append(true).create(true).open(file_path)?;
-
         file.lock_exclusive()?;
 
         // load current map from history file
-        let map = match load_from_file::<Map, Key, Value>(&mut file, &mut cfg.integrity) {
-            Ok(map) => {
-                map
-            }
-            Err(err) => {
-                file.unlock()?;
-                return Err(err);
-            }
-        };
+        let map = map_from_file::<Map, Key, Value>(&mut file, &mut cfg.integrity)?;
 
         Ok(MapWithFile {
             map,
@@ -130,7 +121,7 @@ where
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
         -> Index<IndexKey, Key, Value, std::collections::HashMap<IndexKey, BTreeSet<Key>>>
-    where IndexKey: Clone + Hash + Eq + 'static, {
+    where IndexKey: Clone + Hash + Eq + 'static {
         self.create_index::<IndexKey, std::collections::HashMap<IndexKey, BTreeSet<Key>>>(make_index_key_callback)
     }
 
@@ -139,11 +130,11 @@ where
     /// and deleting elements. In the function it is necessary to determine
     /// the value and type of the index key in any way related to the value of the 'BTree'.
     pub fn create_index<IndexKey, MapOfIndex>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
-                                              -> Index<IndexKey, Key, Value, MapOfIndex>
+        -> Index<IndexKey, Key, Value, MapOfIndex>
     where
         IndexKey: Clone + Eq + 'static,
-        MapOfIndex: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static, {
-
+        MapOfIndex: MapTrait<IndexKey, BTreeSet<Key>> + Default + Sized + 'static,
+    {
         let mut index_map = MapOfIndex::default();
 
         self.map.for_each(|key, val| {

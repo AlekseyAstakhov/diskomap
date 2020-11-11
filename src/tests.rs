@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
-    use crate::BTreeMap;
+    use crate::{BTreeMap, Integrity};
     use crate::cfg::Cfg;
     use std::io::Write;
-    use crate::file_work::LoadFileError;
+    use crate::file_work::{LoadFileError, MapOperation};
     use crate::map_with_file::HashMap;
 
     #[test]
@@ -286,7 +286,6 @@ mod tests {
     #[test]
     fn sha256_chain_integrity() -> Result<(), Box<dyn std::error::Error>> {
         use crate::Integrity;
-        use crate::BTreeMap;
         use std::fs::OpenOptions;
 
         let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e".to_string();
@@ -341,6 +340,79 @@ mod tests {
             }
         }
         assert!(!crc_is_correct);
+
+        Ok(())
+    }
+
+    #[test]
+    fn convert() -> Result<(), Box<dyn std::error::Error>> {
+        use serde::{Deserialize, Serialize};
+        use crate::file_work::convert;
+
+        #[derive(Serialize, Deserialize, Clone, Debug)]
+        struct User {
+            name: String,
+            age: u8,
+        }
+
+        #[derive(Serialize, Deserialize, Clone, Debug)]
+        struct NewUser {
+            name: String,
+            last_visit_date_time: Option<u64>,
+        }
+
+        let tmp_dir = tempdir()?;
+        let src_file = &tmp_dir.path().join("before_convert_db.txt").to_str().unwrap().to_string();
+        let mut users = crate::BTreeMap::open_or_create(&src_file, Cfg::default())?;
+        users.insert(0, User { name: "Masha".to_string(), age: 23 })?;
+        users.insert(3, User { name: "Sasha".to_string(), age: 58 })?;
+        users.insert(5, User { name: "Pasha".to_string(), age: 33 })?;
+        drop(users);
+
+        let file_content = std::fs::read_to_string(&src_file)?;
+        let expected = "ins [0,{\"name\":\"Masha\",\"age\":23}]\n\
+                              ins [3,{\"name\":\"Sasha\",\"age\":58}]\n\
+                              ins [5,{\"name\":\"Pasha\",\"age\":33}]\n";
+        assert_eq!(file_content, expected);
+
+        // Convert map history file for new configuration of storing with Sha256 blockchain integrity.
+        let converted_file = tmp_dir.path().join("converted_db.txt").to_str().unwrap().to_string();
+        let old_cfg = Cfg::default();
+        let mut new_cfg = Cfg::default();
+        new_cfg.integrity = Some(Integrity::Sha256Chain(String::new()));
+
+        convert::<i32, User, i32, User, _>(&src_file, old_cfg, &converted_file, new_cfg, |map_operation| {
+            map_operation
+        })?;
+
+        let file_content = std::fs::read_to_string(&converted_file)?;
+        let expected = "ins [0,{\"name\":\"Masha\",\"age\":23}] 724247ebb86aadc9e7b3bdcfbc8192b5667f404051a0233df13479cbeb689ed6\n\
+                              ins [3,{\"name\":\"Sasha\",\"age\":58}] 88ab0a71126721dfbc15e13457d264ba57aeb95312c0e2a6ceff76ae05c86ff7\n\
+                              ins [5,{\"name\":\"Pasha\",\"age\":33}] eb97dccb813eebbced33093c145599548aeff9167a828db5854f65fa16d03955\n";
+        assert_eq!(file_content, expected);
+
+        // Convert map history file for new 'User' structure and crc32 integrity of storing.
+        let mut old_cfg = Cfg::default();
+        old_cfg.integrity = Some(Integrity::Sha256Chain(String::new()));
+        let mut new_cfg = Cfg::default();
+        new_cfg.integrity = Some(Integrity::Crc32);
+
+        convert::<i32, User, i32, NewUser, _>(&converted_file, old_cfg, &converted_file, new_cfg, |map_operation| {
+            match map_operation {
+                MapOperation::Insert(key, user) => {
+                    MapOperation::Insert(key, NewUser { name: user.name, last_visit_date_time: None })
+                },
+                MapOperation::Remove(key) => {
+                    MapOperation::Remove(key)
+                },
+            }
+        })?;
+
+        let file_content = std::fs::read_to_string(&converted_file)?;
+        let expected = "ins [0,{\"name\":\"Masha\",\"last_visit_date_time\":null}] 2937967141\n\
+                              ins [3,{\"name\":\"Sasha\",\"last_visit_date_time\":null}] 1287121668\n\
+                              ins [5,{\"name\":\"Pasha\",\"last_visit_date_time\":null}] 2217782757\n";
+        assert_eq!(file_content, expected);
 
         Ok(())
     }

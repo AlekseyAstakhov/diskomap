@@ -2,7 +2,6 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::fs::File;
 use std::panic;
-use fs2::FileExt;
 use std::io::Write;
 
 /// For write to the log file in background thread.
@@ -27,9 +26,6 @@ impl FileWorker {
                     }
                 },
                 FileWorkerTask::Stop => {
-                    if let Err(err) = file.unlock() {
-                        if let Some(callback) = &error_callback { callback(err); }
-                    }
                     break 'thread_loop;
                 },
             }
