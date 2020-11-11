@@ -211,7 +211,7 @@ mod tests {
         let mut crc_is_correct = true;
         if let Err(res) = res {
             if let LoadFileError::WrongCrc32 { line_num } = res {
-                    if line_num == 2 {
+                if line_num == 2 {
                     crc_is_correct = false;
                 }
             }
@@ -412,6 +412,53 @@ mod tests {
         let expected = "ins [0,{\"name\":\"Masha\",\"last_visit_date_time\":null}] 2937967141\n\
                               ins [3,{\"name\":\"Sasha\",\"last_visit_date_time\":null}] 1287121668\n\
                               ins [5,{\"name\":\"Pasha\",\"last_visit_date_time\":null}] 2217782757\n";
+        assert_eq!(file_content, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn arbitrary_map() -> Result<(), Box<dyn std::error::Error>> {
+        use vector_map::VecMap;
+        use crate::map_trait::MapTrait;
+        use crate::map_with_file::MapWithFile;
+
+        struct VecMapLocal<Key, Value>(VecMap<Key, Value>);
+
+        type VecMapWithFile<Key, Value> = MapWithFile<Key, Value, VecMapLocal<Key, Value>>;
+
+        impl<Key: Eq, Value>  MapTrait<Key, Value>  for VecMapLocal<Key, Value>  {
+            fn get(&self, key: &Key) -> Option<&Value> { self.0.get(key) }
+            fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.0.get_mut(key) }
+            fn insert(&mut self, key: Key, value: Value)  -> Option<Value> { self.0.insert(key, value) }
+            fn remove(&mut self, key: &Key) -> Option<Value> { self.0.remove(key) }
+            fn for_each(&self, mut f: impl FnMut(&Key, &Value)) { for (key, val) in self.0.iter() { f(key, val) } }
+        }
+
+        impl<Key: Default, Value: Default> Default for VecMapLocal<Key, Value> {
+            fn default() -> Self {
+                VecMapLocal(VecMap::default())
+            }
+        }
+
+        let tmp_dir = tempdir()?;
+        let file_name = tmp_dir.path().join("converted_db.txt").to_str().unwrap().to_string();
+
+        // VecMapWithFile based on vector_map::VecMap
+        let mut map = VecMapWithFile::open_or_create(&file_name, crate::Cfg::default())?;
+
+        map.insert(0, "Masha".to_string())?;
+        map.insert(1, "Sasha".to_string())?;
+        map.insert(3, "Natasha".to_string())?;
+        map.remove(&1)?;
+
+        drop(map);
+
+        let file_content = std::fs::read_to_string(&file_name)?;
+        let expected = "ins [0,\"Masha\"]\n\
+                              ins [1,\"Sasha\"]\n\
+                              ins [3,\"Natasha\"]\n\
+                              rem 1\n";
         assert_eq!(file_content, expected);
 
         Ok(())
