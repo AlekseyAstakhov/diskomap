@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_name = "db/db.txt";
 
     let mut cfg = Cfg::default();
-    cfg.on_write_error = Some(Box::new(|err| {
+    cfg.write_error_callback = Some(Box::new(|err| {
         // This closure will be called on the background thread if there is an error writing to the file.
         dbg!(err);
         std::process::exit(3);

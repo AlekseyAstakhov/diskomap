@@ -4,7 +4,20 @@ pub struct Cfg {
     pub integrity: Option<Integrity>,
     /// Callback for receive a file write error.
     /// If the callback from the callback is None, then errors are ignored..
-    pub on_write_error: Option<Box<dyn Fn(std::io::Error) + Send>>,
+    pub write_error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>,
+
+    /// Called when data of one operation prepared for write to the file.
+    /// This may be needed for the necessary transformation of data written to a file
+    /// or for sending data to a third-party storage.
+    /// Return None from callback if no need change data.
+    /// For data transformation use with 'Self.on_data_read' callback
+    pub before_write_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
+    /// Called when data of one operation read from file.
+    /// This may be needed for the necessary transformation of data written to a file
+    /// or for sending data to a third-party storage.
+    /// Return None from callback if no need change data.
+    /// For data transformation use with 'Self.on_data_prepared' callback
+    pub after_read_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
 }
 
 /// Method of controlling the integrity of stored data in a history file.
@@ -25,7 +38,9 @@ impl Default for Cfg {
     fn default() -> Self {
         Cfg {
             integrity: None,
-            on_write_error: None,
+            write_error_callback: None,
+            before_write_callback: None,
+            after_read_callback: None,
         }
     }
 }

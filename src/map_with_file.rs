@@ -56,11 +56,11 @@ where
         file.lock_exclusive()?;
 
         // load current map from history file
-        let map = map_from_file::<Map, Key, Value>(&mut file, &mut cfg.integrity)?;
+        let map = map_from_file::<Map, Key, Value, _>(&mut file, &mut cfg.integrity, cfg.after_read_callback.take())?;
 
         Ok(MapWithFile {
             map,
-            file_worker: FileWorker::new(file, cfg.on_write_error.take()),
+            file_worker: FileWorker::new(file, cfg.write_error_callback.take()),
             indexes: Vec::new(),
             cfg: cfg,
         })
@@ -69,10 +69,19 @@ where
     /// Inserts a key-value pair into the map. This function is used for updating too.
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
+        // insert to the map
         let old_value = self.map.insert(key.clone(), value.clone());
+        // prepare data for write
+        let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
+
+        // user callback
+        if let Some(f) = &mut self.cfg.before_write_callback {
+            if let Some(transformed_line) = f(&line) {
+                line = transformed_line;
+            }
+        }
 
         // add operation to history file
-        let line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
         self.file_worker.write(line);
 
         // update in index
@@ -90,9 +99,19 @@ where
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
+        // remove from the map
         if let Some(old_value) = self.map.remove(&key) {
+            // prepare data for write
+            let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
+
+            // user callback
+            if let Some(f) = &mut self.cfg.before_write_callback {
+                if let Some(transformed_line) = f(&line) {
+                    line = transformed_line;
+                }
+            }
+
             // add operation to history file
-            let line = file_line_of_remove(key, &mut self.cfg.integrity)?;
             self.file_worker.write(line);
 
             // remove from indexes

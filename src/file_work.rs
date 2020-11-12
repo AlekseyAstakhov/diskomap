@@ -22,17 +22,27 @@ pub enum MapOperation<Key, Value> {
 }
 
 /// Load from file all records and call callback for each.
-pub fn load_file<Key, Value, F>(file: &mut File, integrity: &mut Option<Integrity>, mut f: F)
+pub fn load_file<Key, Value, ProcessedCallback, ReadCallback>(file: &mut File,
+    integrity: &mut Option<Integrity>,
+    mut processed_callback: ProcessedCallback,
+    mut read_callback: Option<ReadCallback>)
     -> Result<(), LoadFileError>
 where
     Key: DeserializeOwned,
     Value: DeserializeOwned,
-    F: FnMut(MapOperation<Key, Value>) -> Result<(), ()>,
+    ProcessedCallback: FnMut(MapOperation<Key, Value>) -> Result<(), ()>,
+    ReadCallback: FnMut(&str) -> Option<String>,
 {
     let mut reader = BufReader::new(file);
     let mut line = String::with_capacity(150);
     let mut line_num = 1;
     while reader.read_line(&mut line)? > 0 {
+        if let Some(read_callback) = &mut read_callback {
+            if let Some(changed_line) = read_callback(&line) {
+                line = changed_line;
+            }
+        }
+
         const MIN_LINE_LEN: usize = 4;
         if line.len() < MIN_LINE_LEN {
             return Err(LoadFileError::FileLineLengthLessThenMinimum { line_num });
@@ -74,7 +84,7 @@ where
         match &line_data[..4] {
             "ins " => match serde_json::from_str(&line_data[4..]) {
                 Ok((key, val)) => {
-                    if let Err(()) = f(MapOperation::Insert(key, val)) {
+                    if let Err(()) = processed_callback(MapOperation::Insert(key, val)) {
                         return Err(LoadFileError::Interrupted);
                     }
                 }
@@ -84,7 +94,7 @@ where
             },
             "rem " => match serde_json::from_str(&line_data[4..]) {
                 Ok(key) => {
-                    if let Err(()) = f(MapOperation::Remove(key)) {
+                    if let Err(()) = processed_callback(MapOperation::Remove(key)) {
                         return Err(LoadFileError::Interrupted);
                     }
                 }
@@ -105,12 +115,15 @@ where
 }
 
 /// Load from file all operations and make actual map.
-pub fn map_from_file<Map, Key, Value>(file: &mut File, integrity: &mut Option<Integrity>)
+pub fn map_from_file<Map, Key, Value, ReadCallback>(file: &mut File,
+                                                    integrity: &mut Option<Integrity>,
+                                                    read_callback: Option<ReadCallback>)
     -> Result<Map, LoadFileError>
 where
     Key: std::cmp::Ord + DeserializeOwned,
     Value: DeserializeOwned,
     Map: MapTrait<Key, Value> + Default,
+    ReadCallback: FnMut(&str) -> Option<String>,
 {
     let mut map = Map::default();
     load_file(file, integrity, |map_operation| {
@@ -120,7 +133,7 @@ where
         };
 
         Ok(())
-    })?;
+    }, read_callback)?;
 
     Ok(map)
 }
@@ -168,7 +181,7 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 
     let mut write_err: Option<ConvertError> = None;
 
-    load_file::<SrcKey, SrcValue, _>(&mut src_file, &mut src_cfg.integrity, |map_operation| {
+    load_file::<SrcKey, SrcValue, _, _>(&mut src_file, &mut src_cfg.integrity, |map_operation| {
         match f(map_operation) {
             MapOperation::Insert(key, value) => {
                 match file_line_of_insert(&key, &value, &mut dst_cfg.integrity) {
@@ -201,7 +214,7 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
         }
 
         Ok(())
-    }).map_err(|err| ConvertError::LoadFileError(err))?;
+    }, src_cfg.after_read_callback).map_err(|err| ConvertError::LoadFileError(err))?;
 
     if file_is_same {
         drop(src_file);

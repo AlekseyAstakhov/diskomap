@@ -12,7 +12,7 @@ pub(crate) struct FileWorker {
 
 impl FileWorker {
     /// Constructs 'FileWorker'. 'file' is opened and exclusive locked file.
-    pub fn new(mut file: File, error_callback: Option<Box<dyn Fn(std::io::Error) + Send>>) -> Self {
+    pub fn new(mut file: File, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
@@ -22,7 +22,7 @@ impl FileWorker {
             match task {
                 FileWorkerTask::Write(data) => {
                     if let Err(err) = file.write_all(data.as_bytes()) {
-                        if let Some(callback) = &error_callback { callback(err); }
+                        if let Some(callback) = &mut error_callback { callback(err); }
                     }
                 },
                 FileWorkerTask::Stop => {
