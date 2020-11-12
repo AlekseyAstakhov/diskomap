@@ -23,7 +23,7 @@ where
     pub fn get(&self, key: &IndexKey) -> Vec<OwnerKey> {
         let mut vec = vec![];
         let map = self.map.read()
-            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic when this map locked
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this map
 
         if let Some(btree_keys) = map.get(key) {
             vec = (*btree_keys).iter().cloned().collect();
@@ -65,7 +65,7 @@ where
         };
 
         let mut map = self.map.write()
-            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic when this map locked
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this map
 
         if let Some(old_value_index_key) = old_value_index_key {
             if let Some(keys) = map.get_mut(&old_value_index_key) {
@@ -90,7 +90,7 @@ where
         let index_key = (self.make_index_key_callback)(&value);
 
         let mut map = self.map.write()
-            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic when this map locked
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this map
 
         let mut need_remove_index = false;
         if let Some(keys) = map.get_mut(&index_key) {

@@ -3,6 +3,7 @@ use std::thread::{spawn, JoinHandle};
 use std::fs::File;
 use std::panic;
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 
 /// For write to the log file in background thread.
 pub(crate) struct FileWorker {
@@ -12,7 +13,7 @@ pub(crate) struct FileWorker {
 
 impl FileWorker {
     /// Constructs 'FileWorker'. 'file' is opened and exclusive locked file.
-    pub fn new(mut file: File, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
+    pub fn new(file: Arc<Mutex<File>>, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
@@ -21,6 +22,8 @@ impl FileWorker {
 
             match task {
                 FileWorkerTask::Write(data) => {
+                    let mut file = file.lock()
+                        .unwrap_or_else(|err| { unreachable!(err) });
                     if let Err(err) = file.write_all(data.as_bytes()) {
                         if let Some(callback) = &mut error_callback { callback(err); }
                     }
