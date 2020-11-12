@@ -76,31 +76,26 @@ where
     /// Inserts a key-value pair into the map.
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
-        let (line, old_val) = self.insert_inner(key, value)?;
+        let old_value = self.map.insert(key.clone(), value.clone());
+        let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
+        self.call_before_write_callback(&mut line);
+        self.update_index_when_insert(&key, &value, &old_value);
         self.file_worker.write(line);
-        Ok(old_val)
+        Ok(old_value)
     }
 
     /// Inserts a key-value pair into the map with returning write to file result.
     /// Writing is performed synchronously in current thread.
     /// Writing is performed synchronously in current thread and out of file worker order queue.
     pub fn insert_sync(&mut self, key: Key, value: Value) -> Result<Option<Value>, SyncInsertRemoveError> {
-        let (line, old_val) = self.insert_inner(key, value)?;
-        let mut file = self.file.lock()
-            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-        file.write(line.as_bytes())?;
-
-        Ok(old_val)
-    }
-
-    /// Insert to the map, prepare data for writing to the file and update indexes. Common for 'insert' and 'insert_sync'.
-    fn insert_inner(&mut self, key: Key, value: Value) -> Result<(String, Option<Value>), serde_json::Error> {
         let old_value = self.map.insert(key.clone(), value.clone());
         let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
         self.call_before_write_callback(&mut line);
+        let mut file = self.file.lock()
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
+        file.write_all(line.as_bytes())?;
         self.update_index_when_insert(&key, &value, &old_value);
-
-        Ok((line, old_value))
+        Ok(old_value)
     }
 
     /// Returns a reference to the value corresponding to the key. No writing to the history file.
@@ -110,9 +105,12 @@ where
 
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
-        if let Some((line, old_val)) = self.remove_inner(key)? {
+        if let Some(old_value) = self.map.remove(&key) {
+            let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
+            self.call_before_write_callback(&mut line);
+            self.update_index_when_remove(key, &old_value);
             self.file_worker.write(line);
-            return Ok(Some(old_val));
+            return Ok(Some(old_value));
         }
 
         Ok(None)
@@ -121,27 +119,21 @@ where
     /// Remove value by key from the map with returning write to history file result.
     /// Writing is performed synchronously in current thread and out of file worker order queue.
     pub fn remove_sync(&mut self, key: &Key) -> Result<Option<Value>, SyncInsertRemoveError> {
-        if let Some((line, old_val)) = self.remove_inner(&key)? {
-            // add operation to history file
-            let mut file = self.file.lock()
-                .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-            file.write(line.as_bytes())?;
-            return Ok(Some(old_val));
-        }
-
-        Ok(None)
-    }
-
-    /// Remove from the map, prepare data for writing to the file and update indexes. Common for 'remove' and 'remove_sync'.
-    fn remove_inner(&mut self, key: &Key) -> Result<Option<(String, Value)>, serde_json::Error> {
-        // prepare data for write
-        let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
-
-        // remove from the map
         if let Some(old_value) = self.map.remove(&key) {
+            let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
             self.call_before_write_callback(&mut line);
             self.update_index_when_remove(key, &old_value);
-            return Ok(Some((line, old_value)));
+            let mut file = self.file.lock()
+                .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
+            let res = file.write(line.as_bytes());
+            drop(file); // unlock
+            if let Err(err) = res {
+                // insert back to the map, because the call to this function is only needed to provide a guarantee that write to the file is successful
+                self.map.insert(key.clone(), old_value);
+                return Err(SyncInsertRemoveError::WriteError(err));
+            }
+
+            return Ok(Some(old_value));
         }
 
         Ok(None)
