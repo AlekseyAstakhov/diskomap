@@ -204,6 +204,8 @@ where
         &self.map
     }
 
+    /// Helper for call callback with data of one operation prepared for write to the file.
+    /// Callback can transform 'line' data.
     fn call_before_write_callback(&mut self, line: &mut String) {
         if let Some(f) = &mut self.cfg.before_write_callback {
             if let Some(transformed_line) = f(line) {
