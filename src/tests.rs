@@ -525,6 +525,54 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn before_write_and_after_read_callbacks() -> Result<(), Box<dyn std::error::Error>> {
+        let src_file = tmp_file()?;
+        let mut cfg = Cfg::default();
+        cfg.before_write_callback = Some(Box::new(|line| {
+            assert_eq!(line, "ins [0,\"Masha\"]\n");
+            None
+        }));
+
+        cfg.after_read_callback = Some(Box::new(|line| {
+            assert_eq!(line, "ins [0,\"Masha\"]\n");
+            None
+        }));
+
+        let mut map = crate::BTreeMap::open_or_create(&src_file, cfg)?;
+        map.insert(0, "Masha".to_string())?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn before_write_and_after_read_callbacks2() -> Result<(), Box<dyn std::error::Error>> {
+        let src_file = tmp_file()?;
+        let mut cfg = Cfg::default();
+        cfg.before_write_callback = Some(Box::new(|line| {
+            assert_eq!(line, "ins [0,\"Masha\"]\n");
+            let transformed_line = line.trim_end().to_string() + " + Sasha\n";
+            Some(transformed_line)
+        }));
+
+        let mut map = crate::BTreeMap::open_or_create(&src_file, cfg)?;
+        map.insert(0, "Masha".to_string())?;
+        drop(map);
+
+        // reopen
+        let mut cfg = Cfg::default();
+        cfg.after_read_callback = Some(Box::new(|line| {
+            assert_eq!(line, "ins [0,\"Masha\"] + Sasha\n");
+            let transformed_line = line[..line.len() - 8].to_string() + "\n";
+            Some(transformed_line)
+        }));
+
+        let mut map = crate::BTreeMap::open_or_create(&src_file, cfg)?;
+        map.insert(1, "Masha".to_string())?;
+
+        Ok(())
+    }
+
     #[derive(Debug)]
     struct TempDirError();
 
