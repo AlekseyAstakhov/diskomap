@@ -71,14 +71,14 @@ where
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
         let old_value = self.map.insert(key.clone(), value.clone());
 
+        // add operation to history file
+        let line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
+        self.file_worker.write(line);
+
         // update in index
         for index in self.indexes.iter() {
             index.on_insert(key.clone(), value.clone(), old_value.clone());
         }
-
-        // add operation to history file
-        let line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
-        self.file_worker.write(line);
 
         Ok(old_value)
     }
@@ -91,13 +91,14 @@ where
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
         if let Some(old_value) = self.map.remove(&key) {
+            // add operation to history file
+            let line = file_line_of_remove(key, &mut self.cfg.integrity)?;
+            self.file_worker.write(line);
+
             // remove from indexes
             for index in self.indexes.iter() {
                 index.on_remove(&key, &old_value);
             }
-
-            let line = file_line_of_remove(key, &mut self.cfg.integrity)?;
-            self.file_worker.write(line);
 
             return Ok(Some(old_value.clone()));
         }
