@@ -28,20 +28,21 @@ pub type BTreeMap<Key, Value> = MapWithFile<Key, Value, std::collections::BTreeM
 /// Based on std::collections::HashMap.
 pub type HashMap<Key, Value> = MapWithFile<Key, Value, std::collections::HashMap<Key, Value>>;
 
-/// Map container with storing all changes history to the file.
+/// File based map.
+/// Wrapper of map container with storing all changes history to the file.
 /// Restores own state from the file when creating.
 pub struct MapWithFile<Key, Value, Map>
 where Map: MapTrait<Key, Value>  {
-    /// Map in the RAM.
+    /// Wrapped map container.
     map: Map,
-    // For append operations to the history file in background thread.
-    file_worker: FileWorker,
-    /// Created indexes.
-    indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
     /// Config.
     cfg: Cfg,
     /// Opened and exclusive locked history file of operations on map.
     file: Arc<Mutex<File>>,
+    // For append map changes to the file in background thread.
+    file_worker: FileWorker,
+    /// Created indexes.
+    indexes: Vec<Box<dyn UpdateIndex<Key, Value>>>,
 }
 
 impl<Key, Value: 'static, Map> MapWithFile<Key, Value, Map>
@@ -50,9 +51,10 @@ where
     Value: Serialize + DeserializeOwned + Clone,
     Map: MapTrait<Key, Value> + Default {
 
-    /// Open/create map with history file 'file_path'.
-    /// If file is exist then load map from file.
-    /// If file not is not exist then create new file.
+    /// Constructs file based map.
+    /// Open/create file and loads the entire history of
+    /// changes from file restoring the last state of the map.
+    /// If file is exist then load map from file. If file not is not exist then create new file.
     pub fn open_or_create(file_path: &str, mut cfg: Cfg) -> Result<Self, LoadFileError> {
         create_dirs_to_path_if_not_exist(file_path)?;
 
@@ -74,7 +76,7 @@ where
     }
 
     /// Inserts a key-value pair into the map.
-    /// Data will be written to RAM immediately, and to disk later in a separate thread.
+    /// Insert into the map will immediately, and to disk later in a background thread.
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
         let old_value = self.map.insert(key.clone(), value.clone());
         let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
@@ -98,12 +100,13 @@ where
         Ok(old_value)
     }
 
-    /// Returns a reference to the value corresponding to the key. No writing to the history file.
+    /// Returns a reference to the value corresponding to the key. Nothing writing to the file.
     pub fn get(&self, key: &Key) -> Option<&Value> {
         self.map.get(key)
     }
 
-    /// Remove value by key from the map in memory and asynchronously append operation to the file.
+    /// Remove value by key.
+    /// Insert into the map will immediately, and to disk later in a background thread.
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
         if let Some(old_value) = self.map.remove(&key) {
             let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
@@ -140,9 +143,9 @@ where
     }
 
     /// Create index by value based on std::collections::BTreeMap.
-    /// 'make_index_key_callback' function is called during all operations of inserting,
-    /// and deleting elements. In the function it is necessary to determine
-    /// the value and type of the index key in any way related to the value of the 'BTree'.
+    /// 'make_index_key_callback' will call everytime when insert or remove on map.
+    /// Inside into callback necessary to determine the value and type of the index key
+    /// in any way related to the value of the map.
     pub fn create_btree_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
         -> Index<IndexKey, Key, Value, std::collections::BTreeMap<IndexKey, BTreeSet<Key>>>
     where IndexKey: Clone + Ord + 'static {
@@ -150,9 +153,9 @@ where
     }
 
     /// Create index by value based on std::collections::HashMap.
-    /// 'make_index_key_callback' function is called during all operations of inserting,
-    /// and deleting elements. In the function it is necessary to determine
-    /// the value and type of the index key in any way related to the value of the 'BTree'.
+    /// 'make_index_key_callback' will call everytime when insert or remove on map.
+    /// Inside into callback necessary to determine the value and type of the index key
+    /// in any way related to the value of the map.
     pub fn create_hashmap_index<IndexKey>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
         -> Index<IndexKey, Key, Value, std::collections::HashMap<IndexKey, BTreeSet<Key>>>
     where IndexKey: Clone + Hash + Eq + 'static {
@@ -160,9 +163,9 @@ where
     }
 
     /// Create index by value.
-    /// 'make_index_key_callback' function is called during all operations of inserting,
-    /// and deleting elements. In the function it is necessary to determine
-    /// the value and type of the index key in any way related to the value of the 'BTree'.
+    /// 'make_index_key_callback' will call everytime when insert or remove on map.
+    /// Inside into callback necessary to determine the value and type of the index key
+    /// in any way related to the value of the map.
     pub fn create_index<IndexKey, MapOfIndex>(&mut self, make_index_key_callback: fn(&Value) -> IndexKey)
         -> Index<IndexKey, Key, Value, MapOfIndex>
     where
@@ -191,13 +194,12 @@ where
         index
     }
 
-    /// Returns a reference to an used map.
+    /// Returns reference to the used map.
     pub fn map(&self) -> &Map {
         &self.map
     }
 
-    /// Helper for call callback with data of one operation prepared for write to the file.
-    /// Callback can transform 'line' data.
+    /// Helper for call callback with data of one operation prepared for writing to the file.
     fn call_before_write_callback(&mut self, line: &mut String) {
         if let Some(f) = &mut self.cfg.before_write_callback {
             if let Some(transformed_line) = f(line) {
@@ -206,17 +208,19 @@ where
         }
     }
 
-    fn update_index_when_remove(&self, key: &Key, old_value: &Value) {
-        // remove from indexes
-        for index in self.indexes.iter() {
-            index.on_remove(&key, &old_value);
-        }
-    }
-
+    /// Update a indexes when inserting into the map.
     fn update_index_when_insert(&self, key: &Key, value: &Value, old_value: &Option<Value>) {
         // update in index
         for index in self.indexes.iter() {
             index.on_insert(key.clone(), value.clone(), old_value.clone());
+        }
+    }
+
+    /// Update a indexes when removing from the map.
+    fn update_index_when_remove(&self, key: &Key, old_value: &Value) {
+        // remove from indexes
+        for index in self.indexes.iter() {
+            index.on_remove(&key, &old_value);
         }
     }
 }

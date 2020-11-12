@@ -233,9 +233,9 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 /// Possible errors of 'load_from_file'.
 #[derive(Debug)]
 pub enum LoadFileError {
-    /// When line length in operations log file less then need.
+    /// When line length in file less then needed.
     LastLineWithoutEndLine { line_num: usize, },
-    /// When line length in operations log file less then need.
+    /// When line length in operations log file less then needed.
     FileLineLengthLessThenMinimum { line_num: usize, },
     /// Open, create or read file error.
     FileError(std::io::Error),

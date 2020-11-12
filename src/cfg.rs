@@ -1,4 +1,4 @@
-/// Config of map with storing history to the file.
+/// Config of file based map.
 pub struct Cfg {
     /// Method of controlling the integrity of stored data in a history file.
     pub integrity: Option<Integrity>,
@@ -6,15 +6,15 @@ pub struct Cfg {
     /// If the callback from the callback is None, then errors are ignored..
     pub write_error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>,
 
-    /// Called when data of one operation prepared for write to the file.
-    /// This may be needed for the necessary transformation of data written to a file
+    /// Called when data of insert or remove prepared for writing to the file.
+    /// This may be needed for data transformation before write to the file
     /// or for sending data to a third-party storage.
     /// Return None from callback if no need change data.
     /// For data transformation use with 'Self.on_data_read' callback
     /// Source string ends with '\n' and transformed string need so ends with '\n'
     /// and no contains other '\n' because read from file will line by line.
     pub before_write_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
-    /// Called when data of one operation read from file.
+    /// Called when data of insert or remove read from file.
     /// This may be needed for the necessary transformation of data written to a file
     /// or for sending data to a third-party storage.
     /// Return None from callback if no need change data.
