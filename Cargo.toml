@@ -13,7 +13,6 @@ crc = "1.8.1"
 rust-crypto = "0.2"
 tempfile = "3.1.0"
 fs2 = "0.4.3"
-vector-map = "1.0.1"
 
 [dev-dependencies]
 serde = { version = "1.0.59", features = ["derive"] }

@@ -419,38 +419,103 @@ mod tests {
 
     #[test]
     fn arbitrary_map() -> Result<(), Box<dyn std::error::Error>> {
-        use vector_map::VecMap;
         use crate::map_trait::MapTrait;
         use crate::map_with_file::MapWithFile;
 
-        struct VecMapLocal<Key, Value>(VecMap<Key, Value>);
-
-        type VecMapWithFile<Key, Value> = MapWithFile<Key, Value, VecMapLocal<Key, Value>>;
-
-        impl<Key: Eq, Value>  MapTrait<Key, Value>  for VecMapLocal<Key, Value>  {
-            fn get(&self, key: &Key) -> Option<&Value> { self.0.get(key) }
-            fn get_mut(&mut self, key: &Key) -> Option<&mut Value> { self.0.get_mut(key) }
-            fn insert(&mut self, key: Key, value: Value)  -> Option<Value> { self.0.insert(key, value) }
-            fn remove(&mut self, key: &Key) -> Option<Value> { self.0.remove(key) }
-            fn for_each(&self, mut f: impl FnMut(&Key, &Value)) { for (key, val) in self.0.iter() { f(key, val) } }
+        struct StupidMap<Key, Value> {
+            vec: Vec<(Key, Value)>
         }
 
-        impl<Key: Default, Value: Default> Default for VecMapLocal<Key, Value> {
+        type StupidMapWithFile<Key, Value> = MapWithFile<Key, Value, StupidMap<Key, Value>>;
+
+        impl<Key: Ord, Value>  MapTrait<Key, Value>  for StupidMap<Key, Value>  {
+            fn get(&self, key: &Key) -> Option<&Value> {
+                let res = self.vec.binary_search_by(|(k, _)| {
+                    k.cmp(key)
+                });
+
+                if let Ok(index) = res {
+                    self.vec.get(index).map(|(_, val)| val)
+                } else {
+                    None
+                }
+            }
+
+            fn get_mut(&mut self, key: &Key) -> Option<&mut Value> {
+                let res = self.vec.binary_search_by(|(k, _)| {
+                    k.cmp(key)
+                });
+
+                if let Ok(index) = res {
+                    self.vec.get_mut(index).map(|(_, val)| val)
+                } else {
+                    None
+                }
+            }
+
+            fn insert(&mut self, key: Key, value: Value)  -> Option<Value> {
+                let res = self.vec.binary_search_by(|(k, _)| {
+                    k.cmp(&key)
+                });
+
+                let mut value = value;
+
+                let old_val = if let Ok(index) = res {
+                    if let Some(current_val) = self.vec.get_mut(index).map(|(_, val)| val) {
+                        std::mem::swap(current_val, &mut value);
+                        Some(value)
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    self.vec.push((key, value));
+                    self.vec.sort_by(|(key_a, _), (key_b, _)| { key_a.cmp(key_b) });
+                    None
+                };
+
+                old_val
+            }
+
+            fn remove(&mut self, key: &Key) -> Option<Value> {
+                let res = self.vec.binary_search_by(|(k, _)| {
+                    k.cmp(key)
+                });
+
+                if let Ok(index) = res {
+                    let (_, old_val) = self.vec.remove(index);
+                    Some(old_val)
+                } else {
+                    None
+                }
+            }
+
+            fn for_each(&self, mut f: impl FnMut(&Key, &Value)) {
+                for (key, val) in self.vec.iter() {
+                    f(key, val)
+                }
+            }
+        }
+
+        impl<Key: Default, Value: Default> Default for StupidMap<Key, Value> {
             fn default() -> Self {
-                VecMapLocal(VecMap::default())
+                StupidMap { vec: Vec::new() }
             }
         }
 
         let tmp_dir = tempdir()?;
-        let file_name = tmp_dir.path().join("converted_db.txt").to_str().unwrap().to_string();
+        let file_name = tmp_dir.path().join("arbitrary_map.txt").to_str().unwrap().to_string();
 
         // VecMapWithFile based on vector_map::VecMap
-        let mut map = VecMapWithFile::open_or_create(&file_name, crate::Cfg::default())?;
+        let mut map = StupidMapWithFile::open_or_create(&file_name, crate::Cfg::default())?;
 
         map.insert(0, "Masha".to_string())?;
         map.insert(1, "Sasha".to_string())?;
         map.insert(3, "Natasha".to_string())?;
         map.remove(&1)?;
+
+        assert_eq!(map.get(&0), Some(&"Masha".to_string()));
+        assert_eq!(map.get(&1), None);
+        assert_eq!(map.get(&3), Some(&"Natasha".to_string()));
 
         drop(map);
 
