@@ -111,12 +111,16 @@ where
             }
         }
 
+        self.update_index_when_insert(&key, &value, &old_value);
+
+        Ok((line, old_value))
+    }
+
+    fn update_index_when_insert(&self, key: &Key, value: &Value, old_value: &Option<Value>) {
         // update in index
         for index in self.indexes.iter() {
             index.on_insert(key.clone(), value.clone(), old_value.clone());
         }
-
-        Ok((line, old_value))
     }
 
     /// Returns a reference to the value corresponding to the key. No writing to the history file.
@@ -166,15 +170,19 @@ where
                 }
             }
 
-            // remove from indexes
-            for index in self.indexes.iter() {
-                index.on_remove(&key, &old_value);
-            }
+            self.update_index_when_remove(key, &old_value);
 
             return Ok(Some((line, old_value)));
         }
 
         Ok(None)
+    }
+
+    fn update_index_when_remove(&self, key: &Key, old_value: &Value) {
+        // remove from indexes
+        for index in self.indexes.iter() {
+            index.on_remove(&key, &old_value);
+        }
     }
 
     /// Create index by value based on std::collections::BTreeMap.
