@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod tests {
-    use tempfile::tempdir;
     use crate::{BTreeMap, Integrity};
     use crate::cfg::Cfg;
     use std::io::Write;
     use crate::file_work::{LoadFileError, MapOperation};
     use crate::map_with_file::HashMap;
+    use uuid::Uuid;
 
     #[test]
     fn common() -> Result<(), Box<dyn std::error::Error>> {
         // new file
-        let file = tempdir()?.path().join("btree_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
         map.insert((), ())?;
         drop(map);
@@ -30,7 +30,7 @@ mod tests {
         drop(map);
 
         // new log file
-        let file = tempdir()?.path().join("btree_test2.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut map = BTreeMap::open_or_create(&file, Cfg::default())?;
         map.insert("key 1".to_string(), 1)?;
         map.insert("key 2".to_string(), 2)?;
@@ -79,7 +79,6 @@ mod tests {
     #[test]
     fn btree_index() -> Result<(), Box<dyn std::error::Error>> {
         use serde::{Deserialize, Serialize};
-        use tempfile::tempdir;
         use crate::cfg::Cfg;
 
         #[derive(Clone, Serialize, Deserialize)]
@@ -89,7 +88,7 @@ mod tests {
         }
 
         // new log file
-        let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut map = crate::BTreeMap::open_or_create(&file, Cfg::default())?;
         let user_name_index = map.create_btree_index(|value: &User| value.name.clone());
 
@@ -127,7 +126,6 @@ mod tests {
     #[test]
     fn hashmap_index() -> Result<(), Box<dyn std::error::Error>> {
         use serde::{Deserialize, Serialize};
-        use tempfile::tempdir;
 
         #[derive(Clone, Serialize, Deserialize)]
         struct User {
@@ -136,7 +134,7 @@ mod tests {
         }
 
         // new log file
-        let file = tempdir()?.path().join("index_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut map = crate::BTreeMap::open_or_create(&file, Cfg::default())?;
         let user_name_index = map.create_hashmap_index(|value: &User| value.name.clone());
 
@@ -180,7 +178,7 @@ mod tests {
 
         let mut cfg = Cfg::default();
         cfg.integrity = Some(Integrity::Crc32);
-        let file = tempdir()?.path().join("integrity_crc32_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut map = BTreeMap::open_or_create(&file, cfg)?;
         map.insert(0, "a".to_string())?;
         map.insert(3, "b".to_string())?;
@@ -229,7 +227,7 @@ mod tests {
 
         let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e".to_string();
 
-        let file = tempdir()?.path().join("integrity_sha1_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut cfg = Cfg::default();
         cfg.integrity = Some(Integrity::Sha1Chain(inital_hash.clone()));
         let mut map = BTreeMap::open_or_create(&file, cfg)?;
@@ -290,7 +288,7 @@ mod tests {
 
         let inital_hash = "7a2131d1a326940d3a04d4ee70e7ba4992b0b826ce5c3521b67edcac9ae6041e".to_string();
 
-        let file = tempdir()?.path().join("integrity_test.txt").to_str().unwrap().to_string();
+        let file = tmp_file()?;
         let mut cfg = Cfg::default();
         cfg.integrity = Some(Integrity::Sha256Chain(inital_hash.clone()));
         let mut map = BTreeMap::open_or_create(&file, cfg)?;
@@ -361,8 +359,7 @@ mod tests {
             last_visit_date_time: Option<u64>,
         }
 
-        let tmp_dir = tempdir()?;
-        let src_file = &tmp_dir.path().join("before_convert_db.txt").to_str().unwrap().to_string();
+        let src_file = tmp_file()?;
         let mut users = crate::BTreeMap::open_or_create(&src_file, Cfg::default())?;
         users.insert(0, User { name: "Masha".to_string(), age: 23 })?;
         users.insert(3, User { name: "Sasha".to_string(), age: 58 })?;
@@ -376,7 +373,7 @@ mod tests {
         assert_eq!(file_content, expected);
 
         // Convert map history file for new configuration of storing with Sha256 blockchain integrity.
-        let converted_file = tmp_dir.path().join("converted_db.txt").to_str().unwrap().to_string();
+        let converted_file = tmp_file()?;
         let old_cfg = Cfg::default();
         let mut new_cfg = Cfg::default();
         new_cfg.integrity = Some(Integrity::Sha256Chain(String::new()));
@@ -502,8 +499,7 @@ mod tests {
             }
         }
 
-        let tmp_dir = tempdir()?;
-        let file_name = tmp_dir.path().join("arbitrary_map.txt").to_str().unwrap().to_string();
+        let file_name = tmp_file()?;
 
         // VecMapWithFile based on vector_map::VecMap
         let mut map = StupidMapWithFile::open_or_create(&file_name, crate::Cfg::default())?;
@@ -527,5 +523,23 @@ mod tests {
         assert_eq!(file_content, expected);
 
         Ok(())
+    }
+
+    #[derive(Debug)]
+    struct TempDirError();
+
+    fn tmp_file() -> Result<String, TempDirError> {
+        let tempdir = std::env::temp_dir()
+            .to_str().ok_or(TempDirError())?
+            .to_string();
+        Ok(format!("{}/{}.txt", tempdir, Uuid::new_v4()))
+    }
+
+    impl std::error::Error for TempDirError {}
+
+    impl std::fmt::Display for TempDirError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:?}", self)
+        }
     }
 }

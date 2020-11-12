@@ -10,8 +10,8 @@ use crypto::sha2::Sha256;
 use crypto::sha1::Sha1;
 use crate::Cfg;
 use fs2::FileExt;
-use tempfile::tempdir;
 use std::fs;
+use uuid::Uuid;
 
 /// Record about operation on map in history file.
 pub enum MapOperation<Key, Value> {
@@ -144,19 +144,16 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 
     let file_is_same = src_file_path == dst_file_path;
 
-    let tempdir = tempdir().map_err(|_|ConvertError::TmpFileError)?;
     let dst_file_path = if file_is_same {
-        tempdir
-            .path()
-            .join("btree_test.txt")
+        let tempdir = std::env::temp_dir()
             .to_str().ok_or(ConvertError::TmpFileError)?
-            .to_string()
+            .to_string();
+        format!("{}/{}.txt", tempdir, Uuid::new_v4())
     } else {
         dst_file_path.to_string()
     };
 
     let mut dst_file = if file_is_same {
-        dbg!(&dst_file_path);
         OpenOptions::new().write(true).create(true).open(&dst_file_path)
             .map_err(|err| ConvertError::OpenDstFileError(err))?
     } else {
