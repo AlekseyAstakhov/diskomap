@@ -43,6 +43,10 @@ where
             }
         }
 
+        if !line.ends_with('\n') {
+            return Err(LoadFileError::LastLineWithoutEndLine { line_num });
+        }
+
         const MIN_LINE_LEN: usize = 4;
         if line.len() < MIN_LINE_LEN {
             return Err(LoadFileError::FileLineLengthLessThenMinimum { line_num });
@@ -229,6 +233,8 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 /// Possible errors of 'load_from_file'.
 #[derive(Debug)]
 pub enum LoadFileError {
+    /// When line length in operations log file less then need.
+    LastLineWithoutEndLine { line_num: usize, },
     /// When line length in operations log file less then need.
     FileLineLengthLessThenMinimum { line_num: usize, },
     /// Open, create or read file error.
