@@ -71,8 +71,8 @@ where
             &line[..]
         };
 
-        match &line_data[..3] {
-            "ins" => match serde_json::from_str(&line_data[4..]) {
+        match &line_data[..4] {
+            "ins " => match serde_json::from_str(&line_data[4..]) {
                 Ok((key, val)) => {
                     if let Err(()) = f(MapOperation::Insert(key, val)) {
                         return Err(LoadFileError::Interrupted);
@@ -82,7 +82,7 @@ where
                     return Err(LoadFileError::DeserializeJsonError { err, line_num });
                 }
             },
-            "rem" => match serde_json::from_str(&line_data[4..]) {
+            "rem " => match serde_json::from_str(&line_data[4..]) {
                 Ok(key) => {
                     if let Err(()) = f(MapOperation::Remove(key)) {
                         return Err(LoadFileError::Interrupted);
