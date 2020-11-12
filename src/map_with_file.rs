@@ -77,9 +77,7 @@ where
     /// Data will be written to RAM immediately, and to disk later in a separate thread.
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
         let (line, old_val) = self.insert_inner(key, value)?;
-        // add operation to history file
         self.file_worker.write(line);
-
         Ok(old_val)
     }
 
@@ -88,10 +86,8 @@ where
     /// Writing is performed synchronously in current thread and out of file worker order queue.
     pub fn insert_sync(&mut self, key: Key, value: Value) -> Result<Option<Value>, SyncInsertRemoveError> {
         let (line, old_val) = self.insert_inner(key, value)?;
-        // add operation to history file
         let mut file = self.file.lock()
             .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-
         file.write(line.as_bytes())?;
 
         Ok(old_val)
@@ -99,28 +95,12 @@ where
 
     /// Insert to the map, prepare data for writing to the file and update indexes. Common for 'insert' and 'insert_sync'.
     fn insert_inner(&mut self, key: Key, value: Value) -> Result<(String, Option<Value>), serde_json::Error> {
-        // insert to the map
         let old_value = self.map.insert(key.clone(), value.clone());
-        // prepare data for write
         let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
-
-        // user callback
-        if let Some(f) = &mut self.cfg.before_write_callback {
-            if let Some(transformed_line) = f(&line) {
-                line = transformed_line;
-            }
-        }
-
+        self.call_before_write_callback(&mut line);
         self.update_index_when_insert(&key, &value, &old_value);
 
         Ok((line, old_value))
-    }
-
-    fn update_index_when_insert(&self, key: &Key, value: &Value, old_value: &Option<Value>) {
-        // update in index
-        for index in self.indexes.iter() {
-            index.on_insert(key.clone(), value.clone(), old_value.clone());
-        }
     }
 
     /// Returns a reference to the value corresponding to the key. No writing to the history file.
@@ -131,9 +111,7 @@ where
     /// Remove value by key from the map in memory and asynchronously append operation to the file.
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
         if let Some((line, old_val)) = self.remove_inner(key)? {
-            // add operation to history file
             self.file_worker.write(line);
-
             return Ok(Some(old_val));
         }
 
@@ -147,9 +125,7 @@ where
             // add operation to history file
             let mut file = self.file.lock()
                 .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-
             file.write(line.as_bytes())?;
-
             return Ok(Some(old_val));
         }
 
@@ -163,26 +139,12 @@ where
 
         // remove from the map
         if let Some(old_value) = self.map.remove(&key) {
-            // user callback
-            if let Some(f) = &mut self.cfg.before_write_callback {
-                if let Some(transformed_line) = f(&line) {
-                    line = transformed_line;
-                }
-            }
-
+            self.call_before_write_callback(&mut line);
             self.update_index_when_remove(key, &old_value);
-
             return Ok(Some((line, old_value)));
         }
 
         Ok(None)
-    }
-
-    fn update_index_when_remove(&self, key: &Key, old_value: &Value) {
-        // remove from indexes
-        for index in self.indexes.iter() {
-            index.on_remove(&key, &old_value);
-        }
     }
 
     /// Create index by value based on std::collections::BTreeMap.
@@ -240,6 +202,28 @@ where
     /// Returns a reference to an used map.
     pub fn map(&self) -> &Map {
         &self.map
+    }
+
+    fn call_before_write_callback(&mut self, line: &mut String) {
+        if let Some(f) = &mut self.cfg.before_write_callback {
+            if let Some(transformed_line) = f(line) {
+                *line = transformed_line;
+            }
+        }
+    }
+
+    fn update_index_when_remove(&self, key: &Key, old_value: &Value) {
+        // remove from indexes
+        for index in self.indexes.iter() {
+            index.on_remove(&key, &old_value);
+        }
+    }
+
+    fn update_index_when_insert(&self, key: &Key, value: &Value, old_value: &Option<Value>) {
+        // update in index
+        for index in self.indexes.iter() {
+            index.on_insert(key.clone(), value.clone(), old_value.clone());
+        }
     }
 }
 
