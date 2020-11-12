@@ -11,6 +11,8 @@ pub struct Cfg {
     /// or for sending data to a third-party storage.
     /// Return None from callback if no need change data.
     /// For data transformation use with 'Self.on_data_read' callback
+    /// Source string ends with '\n'. Transformed string need so ends with '\n'
+    /// and no contains other '\n'.
     pub before_write_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
     /// Called when data of one operation read from file.
     /// This may be needed for the necessary transformation of data written to a file
