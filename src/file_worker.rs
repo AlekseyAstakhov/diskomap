@@ -55,7 +55,7 @@ impl Drop for FileWorker {
 
 /// Task for send to worker thread.
 enum FileWorkerTask {
-    /// Write operation to the file in the background thread.
+    /// Write line to the file in the background thread.
     Write(String),
     /// Stop worker
     Stop,
