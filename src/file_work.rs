@@ -21,11 +21,11 @@ pub enum MapOperation<Key, Value> {
     Remove(Key),
 }
 
-/// Load from file all records and call callback for each.
-pub fn load_file<Key, Value, ProcessedCallback, ReadCallback>(file: &mut File,
+/// Load from file all map history records and call 'ProcessedCallback' callback for each.
+pub fn load_file<Key, Value, ReadCallback, ProcessedCallback>(file: &mut File,
     integrity: &mut Option<Integrity>,
-    mut processed_callback: ProcessedCallback,
-    mut after_read_callback: Option<ReadCallback>)
+    mut after_read_callback: Option<ReadCallback>,
+    mut processed_callback: ProcessedCallback)
     -> Result<(), LoadFileError>
 where
     Key: DeserializeOwned,
@@ -132,14 +132,14 @@ where
     ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
 {
     let mut map = Map::default();
-    load_file(file, integrity, |map_operation| {
+    load_file(file, integrity,read_callback, |map_operation| {
         match map_operation {
             MapOperation::Insert(key, value) => map.insert(key, value),
             MapOperation::Remove(key) => map.remove(&key),
         };
 
         Ok(())
-    }, read_callback)?;
+    })?;
 
     Ok(map)
 }
@@ -187,7 +187,7 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 
     let mut write_err: Option<ConvertError> = None;
 
-    load_file::<SrcKey, SrcValue, _, _>(&mut src_file, &mut src_cfg.integrity, |map_operation| {
+    load_file::<SrcKey, SrcValue, _, _>(&mut src_file, &mut src_cfg.integrity,src_cfg.after_read_callback, |map_operation| {
         match f(map_operation) {
             MapOperation::Insert(key, value) => {
                 match file_line_of_insert(&key, &value, &mut dst_cfg.integrity) {
@@ -220,7 +220,7 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
         }
 
         Ok(())
-    }, src_cfg.after_read_callback).map_err(|err| ConvertError::LoadFileError(err))?;
+    }).map_err(|err| ConvertError::LoadFileError(err))?;
 
     if file_is_same {
         drop(src_file);
