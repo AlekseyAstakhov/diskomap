@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // When calling of get function, data will be retrieved from std::collection::BTreeMap
     // immediately, without overhead or disk operations.
     let name = map.get(&0).unwrap();
-    println!("name {}", name);
+    println!("Name by key {}: {}", 0, name);
 
     // All non-mutable functions of the original map are also available.
     let count = map.map().len();
