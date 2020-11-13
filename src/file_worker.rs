@@ -4,14 +4,16 @@ use std::fs::File;
 use std::panic;
 use std::io::Write;
 
-/// For write to the log file in background thread.
+/// For write to the file in background thread.
 pub(crate) struct FileWorker {
     task_sender: Sender<FileWorkerTask>,
     join_handle: Option<JoinHandle<()>>,
 }
 
 impl FileWorker {
-    /// Constructs 'FileWorker'. 'file' is opened and exclusive locked file.
+    /// Constructs 'FileWorker' for write to the file in background thread.
+    /// Parameter 'file' is opened and exclusive locked file.
+    /// Parameter 'error_callback' callback for receive errors or writing to the file.
     pub fn new(mut file: File, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
         let (tasks_sender, task_receiver) = channel();
 
@@ -34,7 +36,7 @@ impl FileWorker {
         FileWorker { task_sender: tasks_sender, join_handle }
     }
 
-    /// Write insert operation in the file in the background thread.
+    /// Write data to the file in the background thread.
     pub fn write(&self, data: String) {
         let task = FileWorkerTask::Write(data);
         self.task_sender.send(task)
@@ -50,10 +52,10 @@ impl Drop for FileWorker {
     }
 }
 
-/// Task for send to worker thread.
+/// Task for sending to worker thread.
 enum FileWorkerTask {
     /// Write line to the file in the background thread.
     Write(String),
-    /// Stop worker
+    /// Stop worker.
     Stop,
 }
