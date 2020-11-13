@@ -2,7 +2,7 @@ use fs2::FileExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::collections::BTreeSet;
-use std::fs::{OpenOptions, File};
+use std::fs::OpenOptions;
 use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
 use crate::file_worker::FileWorker;
@@ -15,8 +15,6 @@ use crate::file_work::{
 };
 use crate::map_trait::MapTrait;
 use crate::cfg::Cfg;
-use std::sync::{Arc, Mutex};
-use std::io::Write;
 
 /// Map with storing all changes history to the file.
 /// Restores own state from the file when creating.
@@ -37,8 +35,6 @@ where Map: MapTrait<Key, Value>  {
     map: Map,
     /// Config.
     cfg: Cfg,
-    /// Opened and exclusive locked history file of operations on map.
-    file: Arc<Mutex<File>>,
     // For append map changes to the file in background thread.
     file_worker: FileWorker,
     /// Created indexes.
@@ -64,38 +60,28 @@ where
         // load current map from history file
         let map = map_from_file::<Map, Key, Value, _>(&mut file, &mut cfg.integrity, cfg.after_read_callback.take())?;
 
-        let file = Arc::new(Mutex::new(file));
-
         Ok(MapWithFile {
             map,
-            file_worker: FileWorker::new(file.clone(), cfg.write_error_callback.take()),
+            file_worker: FileWorker::new(file, cfg.write_error_callback.take()),
             indexes: Vec::new(),
             cfg: cfg,
-            file
         })
     }
 
     /// Inserts a key-value pair into the map.
     /// Insert into the map will immediately, and to disk later in a background thread.
+    ///
+    /// # Errors
+    ///
+    /// Error can by returned only if serde_json::to_string() return error:
+    /// Serialization can fail if 'Key' or 'Value' s implementation of `Serialize` decides to
+    /// fail, or if 'Key' or 'Value' contains a map with non-string keys.
+    ///
     pub fn insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, serde_json::Error> {
-        let old_value = self.map.insert(key.clone(), value.clone());
         let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
+        let old_value = self.map.insert(key.clone(), value.clone());
         self.call_before_write_callback(&mut line);
-        self.update_index_when_insert(&key, &value, &old_value);
         self.file_worker.write(line);
-        Ok(old_value)
-    }
-
-    /// Inserts a key-value pair into the map with returning write to file result.
-    /// Writing is performed synchronously in current thread.
-    /// Writing is performed synchronously in current thread and out of file worker order queue.
-    pub fn insert_sync(&mut self, key: Key, value: Value) -> Result<Option<Value>, SyncInsertRemoveError> {
-        let old_value = self.map.insert(key.clone(), value.clone());
-        let mut line = file_line_of_insert(&key, &value, &mut self.cfg.integrity)?;
-        self.call_before_write_callback(&mut line);
-        let mut file = self.file.lock()
-            .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-        file.write_all(line.as_bytes())?;
         self.update_index_when_insert(&key, &value, &old_value);
         Ok(old_value)
     }
@@ -107,35 +93,19 @@ where
 
     /// Remove value by key.
     /// Insert into the map will immediately, and to disk later in a background thread.
+    ///
+    /// # Errors
+    ///
+    /// Error can by returned only if serde_json::to_string() return error:
+    /// Serialization can fail if 'Key' or 'Value' s implementation of `Serialize` decides to
+    /// fail, or if 'Key' or 'Value' contains a map with non-string keys.
+    ///
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, serde_json::Error> {
         if let Some(old_value) = self.map.remove(&key) {
             let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
             self.call_before_write_callback(&mut line);
-            self.update_index_when_remove(key, &old_value);
             self.file_worker.write(line);
-            return Ok(Some(old_value));
-        }
-
-        Ok(None)
-    }
-
-    /// Remove value by key from the map with returning write to history file result.
-    /// Writing is performed synchronously in current thread and out of file worker order queue.
-    pub fn remove_sync(&mut self, key: &Key) -> Result<Option<Value>, SyncInsertRemoveError> {
-        if let Some(old_value) = self.map.remove(&key) {
-            let mut line = file_line_of_remove(key, &mut self.cfg.integrity)?;
-            self.call_before_write_callback(&mut line);
             self.update_index_when_remove(key, &old_value);
-            let mut file = self.file.lock()
-                .unwrap_or_else(|err| unreachable!(err)); // unreachable because no code with possible panic under lock of this file
-            let res = file.write(line.as_bytes());
-            drop(file); // unlock
-            if let Err(err) = res {
-                // insert back to the map, because the call to this function is only needed to provide a guarantee that write to the file is successful
-                self.map.insert(key.clone(), old_value);
-                return Err(SyncInsertRemoveError::WriteError(err));
-            }
-
             return Ok(Some(old_value));
         }
 
@@ -222,31 +192,5 @@ where
         for index in self.indexes.iter() {
             index.on_remove(&key, &old_value);
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum SyncInsertRemoveError {
-    SerializeError(serde_json::Error),
-    WriteError(std::io::Error),
-}
-
-impl From<serde_json::Error > for SyncInsertRemoveError {
-    fn from(err: serde_json::Error) -> Self {
-        SyncInsertRemoveError::SerializeError(err)
-    }
-}
-
-impl From<std::io::Error> for SyncInsertRemoveError {
-    fn from(err: std::io::Error) -> Self {
-        SyncInsertRemoveError::WriteError(err)
-    }
-}
-
-impl std::error::Error for SyncInsertRemoveError {}
-
-impl std::fmt::Display for SyncInsertRemoveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
     }
 }

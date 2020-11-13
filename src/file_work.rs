@@ -25,20 +25,22 @@ pub enum MapOperation<Key, Value> {
 pub fn load_file<Key, Value, ProcessedCallback, ReadCallback>(file: &mut File,
     integrity: &mut Option<Integrity>,
     mut processed_callback: ProcessedCallback,
-    mut read_callback: Option<ReadCallback>)
+    mut after_read_callback: Option<ReadCallback>)
     -> Result<(), LoadFileError>
 where
     Key: DeserializeOwned,
     Value: DeserializeOwned,
     ProcessedCallback: FnMut(MapOperation<Key, Value>) -> Result<(), ()>,
-    ReadCallback: FnMut(&str) -> Option<String>,
+    ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
 {
     let mut reader = BufReader::new(file);
     let mut line = String::with_capacity(150);
     let mut line_num = 1;
     while reader.read_line(&mut line)? > 0 {
-        if let Some(read_callback) = &mut read_callback {
-            if let Some(changed_line) = read_callback(&line) {
+        if let Some(callback) = &mut after_read_callback {
+            let callback_res = callback(&line)
+                .map_err(|()| LoadFileError::InterruptedWithBeforeReadCallback)?;
+            if let Some(changed_line) = callback_res {
                 line = changed_line;
             }
         }
@@ -127,7 +129,7 @@ where
     Key: std::cmp::Ord + DeserializeOwned,
     Value: DeserializeOwned,
     Map: MapTrait<Key, Value> + Default,
-    ReadCallback: FnMut(&str) -> Option<String>,
+    ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
 {
     let mut map = Map::default();
     load_file(file, integrity, |map_operation| {
@@ -253,6 +255,8 @@ pub enum LoadFileError {
     NoLineDefinition { line_num: usize, },
     /// Load file function is manually interrupted.
     Interrupted,
+    /// Load file function is manually interrupted with 'after_read_callback'.
+    InterruptedWithBeforeReadCallback,
 }
 
 /// Make line with insert operation for write to file.

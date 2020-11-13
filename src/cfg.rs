@@ -10,16 +10,16 @@ pub struct Cfg {
     /// This may be needed for data transformation before write to the file
     /// or for sending data to a third-party storage.
     /// Return None from callback if no need change data.
-    /// For data transformation use with 'Self.on_data_read' callback
+    /// For data transformation use with 'after_read_callback' callback.
     /// Source string ends with '\n' and transformed string need so ends with '\n'
-    /// and no contains other '\n' because read from file will line by line.
+    /// and no contains other '\n' because reading from file will line by line.
     pub before_write_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
     /// Called when data of insert or remove read from file.
     /// This may be needed for the necessary transformation of data written to a file
     /// or for sending data to a third-party storage.
     /// Return None from callback if no need change data.
-    /// For data transformation use with 'Self.on_data_prepared' callback
-    pub after_read_callback: Option<Box<dyn FnMut(&str) -> Option<String>>>,
+    /// For data transformation use with 'before_write_callback' callback
+    pub after_read_callback: Option<Box<dyn FnMut(&str) -> Result<Option<String>, ()>>>,
 }
 
 /// Method of controlling the integrity of stored data in a history file.

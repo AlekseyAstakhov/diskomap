@@ -536,7 +536,7 @@ mod tests {
 
         cfg.after_read_callback = Some(Box::new(|line| {
             assert_eq!(line, "ins [0,\"Masha\"]\n");
-            None
+            Ok(None)
         }));
 
         let mut map = crate::BTreeMap::open_or_create(&src_file, cfg)?;
@@ -564,7 +564,7 @@ mod tests {
         cfg.after_read_callback = Some(Box::new(|line| {
             assert_eq!(line, "ins [0,\"Masha\"] + Sasha\n");
             let transformed_line = line[..line.len() - 8].to_string() + "\n";
-            Some(transformed_line)
+            Ok(Some(transformed_line))
         }));
 
         let mut map = crate::HashMap::open_or_create(&src_file, cfg)?;
@@ -572,33 +572,6 @@ mod tests {
 
         Ok(())
     }
-
-    #[test]
-    fn insert_and_remove_sync() -> Result<(), Box<dyn std::error::Error>> {
-        let file = tmp_file()?;
-        let mut map = crate::BTreeMap::open_or_create(&file, Cfg::default())?;
-        map.insert_sync(0, "Masha".to_string())?;
-        map.insert_sync(1, "Sasha".to_string())?;
-        map.insert_sync(3, "Natasha".to_string())?;
-        map.remove_sync(&1)?;
-
-        let keys = map.map().keys().cloned().collect::<Vec<i32>>();
-        assert_eq!(keys, vec![0, 3]);
-        let values = map.map().values().cloned().collect::<Vec<String>>();
-        assert_eq!(values, vec!["Masha".to_string(), "Natasha".to_string()]);
-
-        drop(map);
-
-        let expected = "ins [0,\"Masha\"]\n\
-                              ins [1,\"Sasha\"]\n\
-                              ins [3,\"Natasha\"]\n\
-                              rem 1\n";
-        let file_content = std::fs::read_to_string(&file)?;
-        assert_eq!(file_content, expected);
-
-        Ok(())
-    }
-
 
     #[derive(Debug)]
     struct TempDirError();
