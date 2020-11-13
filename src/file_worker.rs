@@ -12,7 +12,7 @@ pub(crate) struct FileWorker {
 
 impl FileWorker {
     /// Constructs 'FileWorker' for write to the file in background thread.
-    /// Writes in the order queue
+    /// Writes in the order of queue.
     /// Parameter 'file' is opened and exclusive locked file.
     /// Parameter 'error_callback' callback for receive errors or writing to the file.
     pub fn new(mut file: File, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
