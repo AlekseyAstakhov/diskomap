@@ -58,7 +58,7 @@ where
         file.lock_exclusive()?;
 
         // load current map from history file
-        let map = map_from_file::<Map, Key, Value, _>(&mut file, &mut cfg.integrity, cfg.after_read_callback.take())?;
+        let map = map_from_file::<Map, Key, Value, _, _>(&mut file, &mut cfg.integrity, cfg.after_read_callback.take())?;
 
         Ok(MapWithFile {
             map,

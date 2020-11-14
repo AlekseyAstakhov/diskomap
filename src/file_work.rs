@@ -1,5 +1,5 @@
 use crate::cfg::Integrity;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use crc::crc32;
 use serde::de::DeserializeOwned;
@@ -22,16 +22,18 @@ pub enum MapOperation<Key, Value> {
 }
 
 /// Load from file all map history records and call 'ProcessedCallback' callback for each.
-pub fn load_file<Key, Value, ReadCallback, ProcessedCallback>(file: &mut File,
+pub fn load_from_file<Key, Value, ReadCallback, ProcessedCallback, Reader>(
+    file: &mut Reader,
     integrity: &mut Option<Integrity>,
     mut after_read_callback: Option<ReadCallback>,
-    mut processed_callback: ProcessedCallback)
-    -> Result<(), LoadFileError>
+    mut processed_callback: ProcessedCallback
+  ) -> Result<(), LoadFileError>
 where
     Key: DeserializeOwned,
     Value: DeserializeOwned,
     ProcessedCallback: FnMut(MapOperation<Key, Value>) -> Result<(), ()>,
     ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
+    Reader: std::io::Read,
 {
     let mut reader = BufReader::new(file);
     let mut line = String::with_capacity(150);
@@ -121,18 +123,20 @@ where
 }
 
 /// Load from file all operations and make actual map.
-pub fn map_from_file<Map, Key, Value, ReadCallback>(file: &mut File,
-                                                    integrity: &mut Option<Integrity>,
-                                                    read_callback: Option<ReadCallback>)
-    -> Result<Map, LoadFileError>
+pub fn map_from_file<Map, Key, Value, ReadCallback, Reader>(
+    file: &mut Reader,
+    integrity: &mut Option<Integrity>,
+    read_callback: Option<ReadCallback>,
+) -> Result<Map, LoadFileError>
 where
     Key: std::cmp::Ord + DeserializeOwned,
     Value: DeserializeOwned,
     Map: MapTrait<Key, Value> + Default,
     ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
+    Reader: std::io::Read,
 {
     let mut map = Map::default();
-    load_file(file, integrity,read_callback, |map_operation| {
+    load_from_file(file, integrity, read_callback, |map_operation| {
         match map_operation {
             MapOperation::Insert(key, value) => map.insert(key, value),
             MapOperation::Remove(key) => map.remove(&key),
@@ -146,15 +150,18 @@ where
 
 /// Convert history file for other config or key-values types.
 // If 'src_file_path' and 'dst_file_path' is equal, then file will rewritten via tmp file.
-pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
-(src_file_path: &str, mut src_cfg: Cfg, dst_file_path: &str, mut dst_cfg: Cfg, f: F)
- -> Result<(), ConvertError>
-    where
-        SrcKey: DeserializeOwned,
-        SrcValue: DeserializeOwned,
-        DstKey: Serialize,
-        DstValue: Serialize,
-        F: Fn(MapOperation<SrcKey, SrcValue>) -> MapOperation<DstKey, DstValue>
+pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>(
+    src_file_path: &str,
+    mut src_cfg: Cfg,
+    dst_file_path: &str,
+    mut dst_cfg: Cfg, f: F
+) -> Result<(), ConvertError>
+where
+    SrcKey: DeserializeOwned,
+    SrcValue: DeserializeOwned,
+    DstKey: Serialize,
+    DstValue: Serialize,
+    F: Fn(MapOperation<SrcKey, SrcValue>) -> MapOperation<DstKey, DstValue>
 {
     let mut src_file = OpenOptions::new().read(true).open(src_file_path)
         .map_err(|err| ConvertError::OpenSrcFileError(err))?;
@@ -187,7 +194,7 @@ pub fn convert<SrcKey, SrcValue, DstKey, DstValue, F>
 
     let mut write_err: Option<ConvertError> = None;
 
-    load_file::<SrcKey, SrcValue, _, _>(&mut src_file, &mut src_cfg.integrity,src_cfg.after_read_callback, |map_operation| {
+    load_from_file::<SrcKey, SrcValue, _, _, _>(&mut src_file, &mut src_cfg.integrity, src_cfg.after_read_callback, |map_operation| {
         match f(map_operation) {
             MapOperation::Insert(key, value) => {
                 match file_line_of_insert(&key, &value, &mut dst_cfg.integrity) {

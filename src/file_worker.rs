@@ -1,8 +1,5 @@
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{spawn, JoinHandle};
-use std::fs::File;
-use std::panic;
-use std::io::Write;
 
 /// For write to the file in background thread.
 pub(crate) struct FileWorker {
@@ -15,7 +12,13 @@ impl FileWorker {
     /// Writes in the order of queue.
     /// Parameter 'file' is opened and exclusive locked file.
     /// Parameter 'error_callback' callback for receive errors or writing to the file.
-    pub fn new(mut file: File, mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>) -> Self {
+    pub fn new<Writer>(
+        mut file: Writer,
+        mut error_callback: Option<Box<dyn FnMut(std::io::Error) + Send>>
+    ) -> Self
+    where
+        Writer: std::io::Write + Send + 'static
+    {
         let (tasks_sender, task_receiver) = channel();
 
         let join_handle = Some(spawn(move || 'thread_loop: loop {
