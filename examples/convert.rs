@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use diskomap::cfg::{Cfg, Integrity};
-use diskomap::file_work::{convert, MapOperation};
+use diskomap::format::{convert, MapOperation};
 use std::fs;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

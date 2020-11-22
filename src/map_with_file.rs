@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 use std::hash::Hash;
 use crate::index::{UpdateIndex, Index};
 use crate::file_worker::FileWorker;
-use crate::file_work::create_dirs_to_path_if_not_exist;
+use crate::format::create_dirs_to_path_if_not_exist;
 use crate::map_trait::MapTrait;
 use crate::cfg::{Cfg, Format};
 use crate::LoadFileError;

@@ -2,7 +2,7 @@
 
 pub mod map_with_file;
 pub mod cfg;
-pub mod file_work;
+pub mod format;
 pub mod index;
 pub mod map_trait;
 pub mod bin_format;
@@ -15,4 +15,4 @@ pub use map_with_file::HashMap;
 pub use cfg::Cfg;
 pub use cfg::Format;
 pub use cfg::Integrity;
-pub use file_work::LoadFileError;
+pub use format::LoadFileError;

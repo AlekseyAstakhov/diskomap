@@ -3,7 +3,7 @@ mod tests {
     use crate::{BTreeMap, Integrity};
     use crate::cfg::Cfg;
     use std::io::Write;
-    use crate::file_work::{LoadFileError, MapOperation, IntegrityError};
+    use crate::format::{LoadFileError, MapOperation, IntegrityError};
     use crate::map_with_file::HashMap;
     use uuid::Uuid;
     use crate::cfg::Format;
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn convert() -> Result<(), Box<dyn std::error::Error>> {
         use serde::{Deserialize, Serialize};
-        use crate::file_work::convert;
+        use crate::format::convert;
 
         #[derive(Serialize, Deserialize, Clone, Debug)]
         struct User {

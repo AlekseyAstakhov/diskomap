@@ -1,4 +1,4 @@
-use crate::file_work::{MapOperation, blockchain_sha1, blockchain_sha256, IntegrityError};
+use crate::format::{MapOperation, blockchain_sha1, blockchain_sha256, IntegrityError};
 use crate::map_trait::MapTrait;
 use serde::de::DeserializeOwned;
 use crate::{LoadFileError, Integrity};
