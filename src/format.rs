@@ -1,14 +1,13 @@
 use crate::cfg::Format;
 use crate::Cfg;
-use std::fs::OpenOptions;
 use std::io::Write;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use crypto::sha1::Sha1;
-use fs2::FileExt;
 use std::fs;
+use fs2::FileExt;
 use uuid::Uuid;
 use crate::text_format::{text_file_line_of_insert, file_line_of_remove, load_from_text_file};
 use crate::bin_format::load_from_bin_file;
@@ -36,7 +35,7 @@ where
     DstValue: Serialize,
     F: Fn(MapOperation<SrcKey, SrcValue>) -> MapOperation<DstKey, DstValue>
 {
-    let mut src_file = OpenOptions::new().read(true).open(src_file_path)
+    let mut src_file = fs::OpenOptions::new().read(true).open(src_file_path)
         .map_err(ConvertError::OpenSrcFileError)?;
     src_file.lock_exclusive()
         .map_err(|_| ConvertError::LockSrcFileError)?;
@@ -52,7 +51,7 @@ where
         dst_file_path.to_string()
     };
 
-    let mut dst_file = OpenOptions::new().write(true).create(true).open(&dst_file_path)
+    let mut dst_file = fs::OpenOptions::new().write(true).create(true).open(&dst_file_path)
         .map_err(ConvertError::OpenDstFileError)?;
 
     dst_file.set_len(0).map_err(ConvertError::ClearDstFileError)?;
@@ -123,7 +122,7 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
     if let Some(index) = path_to_file.rfind('/') {
         let dir_path = &path_to_file[..index];
         if !std::path::Path::new(dir_path).exists() {
-            std::fs::create_dir_all(&path_to_file[..index])?;
+            fs::create_dir_all(&path_to_file[..index])?;
         }
     }
 
