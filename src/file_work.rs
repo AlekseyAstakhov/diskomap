@@ -1,17 +1,17 @@
-use crate::cfg::Integrity;
+use crate::cfg::Format;
+use crate::Cfg;
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
-use crc::crc32;
+use std::io::Write;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use crate::map_trait::MapTrait;
 use crypto::digest::Digest;
 use crypto::sha2::Sha256;
 use crypto::sha1::Sha1;
-use crate::Cfg;
 use fs2::FileExt;
 use std::fs;
 use uuid::Uuid;
+use crate::text_format::{text_file_line_of_insert, file_line_of_remove, load_from_text_file};
+use crate::bin_format::load_from_bin_file;
 
 /// Record about operation on map in history file.
 pub enum MapOperation<Key, Value> {
@@ -19,133 +19,6 @@ pub enum MapOperation<Key, Value> {
     Insert(Key, Value),
     /// Remove operation.
     Remove(Key),
-}
-
-/// Load from file all map history records and call 'ProcessedCallback' callback for each.
-pub fn load_from_file<Key, Value, ReadCallback, ProcessedCallback, Reader>(
-    file: &mut Reader,
-    integrity: &mut Option<Integrity>,
-    mut after_read_callback: Option<ReadCallback>,
-    mut processed_callback: ProcessedCallback
-  ) -> Result<(), LoadFileError>
-where
-    Key: DeserializeOwned,
-    Value: DeserializeOwned,
-    ProcessedCallback: FnMut(MapOperation<Key, Value>) -> Result<(), ()>,
-    ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
-    Reader: std::io::Read,
-{
-    let mut reader = BufReader::new(file);
-    let mut line = String::with_capacity(150);
-    let mut line_num = 1;
-    while reader.read_line(&mut line)? > 0 {
-        if let Some(callback) = &mut after_read_callback {
-            let callback_res = callback(&line)
-                .map_err(|()| LoadFileError::InterruptedWithBeforeReadCallback)?;
-            if let Some(changed_line) = callback_res {
-                line = changed_line;
-            }
-        }
-
-        if !line.ends_with('\n') {
-            return Err(LoadFileError::LastLineWithoutEndLine { line_num });
-        }
-
-        const MIN_LINE_LEN: usize = 4;
-        if line.len() < MIN_LINE_LEN {
-            return Err(LoadFileError::FileLineLengthLessThenMinimum { line_num });
-        }
-
-        let line_data = if let Some(integrity) = integrity {
-            let data_index = line.rfind(' ').ok_or(LoadFileError::NoExpectedHash { line_num })?;
-            let line_data = &line[..data_index];
-            let hash_data = line[data_index + 1..line.len()].trim_end();
-
-            match integrity {
-                Integrity::Crc32 => {
-                    let crc = crc32::checksum_ieee(line_data.as_bytes());
-                    if crc.to_string() != hash_data {
-                        return Err(LoadFileError::WrongCrc32 { line_num });
-                    }
-                },
-                Integrity::Sha1Chain(hash_of_prev) => {
-                    let sum = blockchain_sha1(&hash_of_prev, line_data.as_bytes());
-                    if sum != hash_data {
-                        return Err(LoadFileError::WrongSha1Chain { line_num });
-                    }
-                    *hash_of_prev = sum;
-                },
-                Integrity::Sha256Chain(hash_of_prev) => {
-                    let sum = blockchain_sha256(&hash_of_prev, line_data.as_bytes());
-                    if sum != hash_data {
-                        return Err(LoadFileError::WrongSha256Chain { line_num });
-                    }
-                    *hash_of_prev = sum;
-                },
-            }
-
-            line_data
-        } else {
-            &line[..]
-        };
-
-        match &line_data[..4] {
-            "ins " => match serde_json::from_str(&line_data[4..]) {
-                Ok((key, val)) => {
-                    if let Err(()) = processed_callback(MapOperation::Insert(key, val)) {
-                        return Err(LoadFileError::Interrupted);
-                    }
-                }
-                Err(err) => {
-                    return Err(LoadFileError::DeserializeJsonError { err, line_num });
-                }
-            },
-            "rem " => match serde_json::from_str(&line_data[4..]) {
-                Ok(key) => {
-                    if let Err(()) = processed_callback(MapOperation::Remove(key)) {
-                        return Err(LoadFileError::Interrupted);
-                    }
-                }
-                Err(err) => {
-                    return Err(LoadFileError::DeserializeJsonError { err, line_num });
-                }
-            },
-            _ => {
-                return Err(LoadFileError::NoLineDefinition { line_num });
-            }
-        }
-
-        line_num += 1;
-        line.clear();
-    }
-
-    Ok(())
-}
-
-/// Load from file all operations and make actual map.
-pub fn map_from_file<Map, Key, Value, ReadCallback, Reader>(
-    file: &mut Reader,
-    integrity: &mut Option<Integrity>,
-    read_callback: Option<ReadCallback>,
-) -> Result<Map, LoadFileError>
-where
-    Key: std::cmp::Ord + DeserializeOwned,
-    Value: DeserializeOwned,
-    Map: MapTrait<Key, Value> + Default,
-    ReadCallback: FnMut(&str) -> Result<Option<String>, ()>,
-    Reader: std::io::Read,
-{
-    let mut map = Map::default();
-    load_from_file(file, integrity, read_callback, |map_operation| {
-        match map_operation {
-            MapOperation::Insert(key, value) => map.insert(key, value),
-            MapOperation::Remove(key) => map.remove(&key),
-        };
-
-        Ok(())
-    })?;
-
-    Ok(map)
 }
 
 /// Convert history file for other config or key-values types.
@@ -164,7 +37,7 @@ where
     F: Fn(MapOperation<SrcKey, SrcValue>) -> MapOperation<DstKey, DstValue>
 {
     let mut src_file = OpenOptions::new().read(true).open(src_file_path)
-        .map_err(|err| ConvertError::OpenSrcFileError(err))?;
+        .map_err(ConvertError::OpenSrcFileError)?;
     src_file.lock_exclusive()
         .map_err(|_| ConvertError::LockSrcFileError)?;
 
@@ -179,25 +52,20 @@ where
         dst_file_path.to_string()
     };
 
-    let mut dst_file = if file_is_same {
-        OpenOptions::new().write(true).create(true).open(&dst_file_path)
-            .map_err(|err| ConvertError::OpenDstFileError(err))?
-    } else {
-        OpenOptions::new().write(true).create(true).open(&dst_file_path)
-            .map_err(|err| ConvertError::OpenDstFileError(err))?
-    };
+    let mut dst_file = OpenOptions::new().write(true).create(true).open(&dst_file_path)
+        .map_err(ConvertError::OpenDstFileError)?;
 
-    dst_file.set_len(0).map_err(|_| ConvertError::ClearDstFileError)?;
+    dst_file.set_len(0).map_err(ConvertError::ClearDstFileError)?;
 
     dst_file.lock_exclusive()
         .map_err(|_| ConvertError::LockDstFileError)?;
 
     let mut write_err: Option<ConvertError> = None;
 
-    load_from_file::<SrcKey, SrcValue, _, _, _>(&mut src_file, &mut src_cfg.integrity, src_cfg.after_read_callback, |map_operation| {
+    let process_map_operation = |map_operation| {
         match f(map_operation) {
             MapOperation::Insert(key, value) => {
-                match file_line_of_insert(&key, &value, &mut dst_cfg.integrity) {
+                match text_file_line_of_insert(&key, &value, &mut dst_cfg.integrity) {
                     Ok(line) => {
                         if let Err(err) = dst_file.write_all(line.as_bytes()) {
                             write_err = Some(ConvertError::WriteToFileError(err));
@@ -227,7 +95,18 @@ where
         }
 
         Ok(())
-    }).map_err(|err| ConvertError::LoadFileError(err))?;
+    };
+
+    match src_cfg.format {
+        Format::Text(_, after_read_callback) => {
+            load_from_text_file::<SrcKey, SrcValue, _, _, _>(&mut src_file, &mut src_cfg.integrity, after_read_callback, process_map_operation)
+                .map_err(ConvertError::LoadFileError)?;
+        },
+        Format::Bin(_, after_read_callback) => {
+            load_from_bin_file::<SrcKey, SrcValue, _, _, _>(&mut src_file, &mut src_cfg.integrity, after_read_callback, process_map_operation)
+                .map_err(ConvertError::LoadFileError)?;
+        },
+    };
 
     if file_is_same {
         drop(src_file);
@@ -237,82 +116,6 @@ where
     }
 
     Ok(())
-}
-
-/// Possible errors of 'load_from_file'.
-#[derive(Debug)]
-pub enum LoadFileError {
-    /// When line length in file less then needed.
-    LastLineWithoutEndLine { line_num: usize, },
-    /// When line length in operations log file less then needed.
-    FileLineLengthLessThenMinimum { line_num: usize, },
-    /// Open, create or read file error.
-    FileError(std::io::Error),
-    /// There is no expected checksum or hash in the log file line when integrity used.
-    NoExpectedHash { line_num: usize },
-    /// Wrong Sha1 of log file line data when Sha256 blockchain integrity used.
-    WrongSha1Chain { line_num: usize, },
-    /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
-    WrongSha256Chain { line_num: usize, },
-    /// Wrong crc32 of log file line data when crc32 integrity used.
-    WrongCrc32 { line_num: usize, },
-    /// Json error with line number in operations log file.
-    DeserializeJsonError { err: serde_json::Error, line_num: usize, },
-    /// Line in operations log file no contains operation name as "ins" or "rem".
-    NoLineDefinition { line_num: usize, },
-    /// Load file function is manually interrupted.
-    Interrupted,
-    /// Load file function is manually interrupted with 'after_read_callback'.
-    InterruptedWithBeforeReadCallback,
-}
-
-/// Make line with insert operation for write to file.
-pub fn file_line_of_insert<Key, Value>(key: &Key, value: Value, integrity: &mut Option<Integrity>)
-    -> Result<String, serde_json::Error>
-where
-    Key: Serialize,
-    Value: Serialize
-{
-    let key_val_json = serde_json::to_string(&(&key, &value))?;
-    let mut line = "ins ".to_string() + &key_val_json;
-    post_process_file_line(&mut line, integrity);
-    Ok(line)
-}
-
-/// Make line with remove operation for write to file.
-pub fn file_line_of_remove<Key>(key: &Key, integrity: &mut Option<Integrity>)
-    -> Result<String, serde_json::Error>
-where
-    Key: Serialize
-{
-    let key_json = serde_json::to_string(key)?;
-    let mut line = "rem ".to_string() + &key_json;
-    post_process_file_line(&mut line, integrity);
-    Ok(line)
-}
-
-/// Depending on the settings in 'cfg', it adds a checksum, calculates the blockchain, compresses, encrypts, etc.
-pub fn post_process_file_line(line: &mut String, integrity: &mut Option<Integrity>) {
-    if let Some(integrity) = integrity {
-        match integrity {
-            Integrity::Crc32 => {
-                let crc = crc32::checksum_ieee(line.as_bytes());
-                *line += &format!(" {}", crc);
-            },
-            Integrity::Sha1Chain(prev_hash) => {
-                let sum = blockchain_sha1(&prev_hash, line.as_bytes());
-                *line += &format!(" {}", sum);
-                *prev_hash = sum;
-            },
-            Integrity::Sha256Chain(prev_hash) => {
-                let sum = blockchain_sha256(&prev_hash, line.as_bytes());
-                *line += &format!(" {}", sum);
-                *prev_hash = sum;
-            },
-        }
-    }
-
-    line.push('\n');
 }
 
 /// Create dirs to path if not exist.
@@ -327,30 +130,76 @@ pub(crate) fn create_dirs_to_path_if_not_exist(path_to_file: &str) -> Result<(),
     Ok(())
 }
 
-/// Returns hash of significant data of current line of file (hash of sum of prev hash and hash of current line data).
-pub fn blockchain_sha256(prev_hash: &str, line_data: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.input(line_data);
-    let current_data_hash = hasher.result_str();
-    let mut buf = Vec::new(); // need optimize to [u8; 512]
-    buf.extend_from_slice(prev_hash.as_bytes());
-    buf.extend_from_slice(&current_data_hash.as_bytes());
-    let mut hasher = Sha256::new();
+/// Returns hash of significant data of current record of file (hash of sum of prev hash and hash of current line data).
+pub fn blockchain_sha1(prev_hash: &[u8], data: &[u8], out: &mut [u8]) {
+    let mut hasher = Sha1::new();
+    hasher.input(data);
+    let mut current_hash = [0; 20];
+    hasher.result(&mut current_hash);
+    let mut buf = Vec::with_capacity(prev_hash.len() + current_hash.len());
+    buf.extend_from_slice(prev_hash);
+    buf.extend_from_slice(&current_hash);
+    let mut hasher = Sha1::new();
     hasher.input(&buf);
-    hasher.result_str()
+    hasher.result(out);
 }
 
-/// Returns hash of significant data of current line of file (hash of sum of prev hash and hash of current line data).
-pub fn blockchain_sha1(prev_hash: &str, line_data: &[u8]) -> String {
-    let mut hasher = Sha1::new();
-    hasher.input(line_data);
-    let current_data_hash = hasher.result_str();
-    let mut buf = Vec::new(); // need optimize to [u8; 512]
-    buf.extend_from_slice(prev_hash.as_bytes());
-    buf.extend_from_slice(&current_data_hash.as_bytes());
-    let mut hasher = Sha1::new();
+/// Returns hash of significant data of current record of file (hash of sum of prev hash and hash of current line data).
+pub fn blockchain_sha256(prev_hash: &[u8], data: &[u8], out: &mut [u8]) {
+    let mut hasher = Sha256::new();
+    hasher.input(data);
+    let mut current_hash = [0; 32];
+    hasher.result(&mut current_hash);
+    let mut buf = Vec::with_capacity(prev_hash.len() + current_hash.len());
+    buf.extend_from_slice(prev_hash);
+    buf.extend_from_slice(&current_hash);
+    let mut hasher = Sha256::new();
     hasher.input(&buf);
-    hasher.result_str()
+    hasher.result(out);
+}
+
+/// Possible errors of 'load_from_file'.
+#[derive(Debug)]
+pub enum LoadFileError {
+    /// When line length in file less then needed.
+    LastLineWithoutEndLine { line_num: usize, },
+    /// When line length in operations log file less then needed.
+    FileLineLengthLessThenMinimum { line_num: usize, },
+    /// Block len of file must be more then 1.
+    WrongMinBinBlockLen,
+    /// Open, create or read file error.
+    FileError(std::io::Error),
+    /// Error of integrity.
+    IntegrityError(IntegrityError),
+    /// Json error with line number in operations log file.
+    DeserializeJsonError { err: serde_json::Error, line_num: usize },
+    /// Json error with line number in operations log file.
+    DeserializeBincodeError { err: bincode2::Error, block_num: usize },
+    /// Line in operations log file no contains operation name as "ins" or "rem".
+    NoLineDefinition { line_num: usize, },
+    /// Load file function is manually interrupted.
+    Interrupted,
+    /// Load file function is manually interrupted with 'after_read_callback'.
+    InterruptedWithBeforeReadCallback(Box<dyn std::error::Error>),
+}
+
+/// Errors of integrity.
+#[derive(Debug)]
+pub enum IntegrityError {
+    /// There is no expected checksum or hash in the log file line when integrity used.
+    NoExpectedHash { line_num: usize },
+    /// Wrong crc32 of log file line data when crc32 integrity used.
+    Crc32Error { line_num: usize, },
+    /// Wrong Sha1 of log file line data when Sha256 blockchain integrity used.
+    Sha1ChainError { line_num: usize, },
+    /// Wrong Sha256 of log file line data when Sha256 blockchain integrity used.
+    Sha256ChainError { line_num: usize, },
+}
+
+impl From<IntegrityError> for LoadFileError {
+    fn from(err: IntegrityError) -> Self {
+        LoadFileError::IntegrityError(err)
+    }
 }
 
 impl From<std::io::Error> for LoadFileError {
@@ -375,7 +224,7 @@ pub enum ConvertError {
     /// When can't open target file where to save.
     OpenDstFileError(std::io::Error),
     /// When can't clear target file before conversion.
-    ClearDstFileError,
+    ClearDstFileError(std::io::Error),
     /// When can't exclusive lock opened source file.
     LockSrcFileError,
     /// When can't exclusive lock opened target file.

@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let converted_file = "db/converted_db.txt";
     let old_cfg = Cfg::default();
     let mut new_cfg = Cfg::default();
-    new_cfg.integrity = Some(Integrity::Sha256Chain(String::new()));
+    new_cfg.integrity = Some(Integrity::Sha256Chain([0; 32]));
 
     convert::<i32, User, i32, User, _>(file, old_cfg, converted_file, new_cfg, |map_operation| {
         map_operation
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Convert map history file for new 'User' structure and crc32 integrity of storing.
     let mut old_cfg = Cfg::default();
-    old_cfg.integrity = Some(Integrity::Sha256Chain(String::new()));
+    old_cfg.integrity = Some(Integrity::Sha256Chain([0; 32]));
     let mut new_cfg = Cfg::default();
     new_cfg.integrity = Some(Integrity::Crc32);
 

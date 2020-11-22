@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // with the data hash of the current line.
 
     // The initial hash to be used as the previous line hash for generate hash of first line.
-    let initial_hash = String::new();
+    let initial_hash = [0; 32];
     let blockchain_file = "db/blockchain.txt";
     let mut cfg = diskomap::Cfg::default();
     cfg.integrity = Some(diskomap::Integrity::Sha256Chain(initial_hash));

@@ -26,8 +26,13 @@ impl FileWorker {
                 .unwrap_or_else(|err| unreachable!(err)); // unreachable because owner thread will join this thread handle after send FileWorkerTask::Stop and only after will disconnect channel
 
             match task {
-                FileWorkerTask::Write(data) => {
+                FileWorkerTask::WriteString(data) => {
                     if let Err(err) = file.write_all(data.as_bytes()) {
+                        if let Some(callback) = &mut error_callback { callback(err); }
+                    }
+                },
+                FileWorkerTask::WriteBytes(data) => {
+                    if let Err(err) = file.write_all(&data) {
                         if let Some(callback) = &mut error_callback { callback(err); }
                     }
                 },
@@ -41,8 +46,15 @@ impl FileWorker {
     }
 
     /// Write data to the file in the background thread.
-    pub fn write(&self, data: String) {
-        let task = FileWorkerTask::Write(data);
+    pub fn write_string(&self, data: String) {
+        let task = FileWorkerTask::WriteString(data);
+        self.task_sender.send(task)
+            .unwrap_or_else(|err| unreachable!(err)); // unreachable because channel receiver will drop only after out of thread and thread can't stop while FileWorkerTask::Stop is not received
+    }
+
+    /// Write data to the file in the background thread.
+    pub fn write_bytes(&self, data: Vec<u8>) {
+        let task = FileWorkerTask::WriteBytes(data);
         self.task_sender.send(task)
             .unwrap_or_else(|err| unreachable!(err)); // unreachable because channel receiver will drop only after out of thread and thread can't stop while FileWorkerTask::Stop is not received
     }
@@ -59,7 +71,9 @@ impl Drop for FileWorker {
 /// Task for sending to worker thread.
 enum FileWorkerTask {
     /// Write line to the file in the background thread.
-    Write(String),
+    WriteString(String),
+    /// Write data block to the file in the background thread.
+    WriteBytes(Vec<u8>),
     /// Stop worker.
     Stop,
 }
