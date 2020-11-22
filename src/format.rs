@@ -167,6 +167,8 @@ pub enum LoadFileError {
     FileLineLengthLessThenMinimum { line_num: usize, },
     /// Block len of file must be more then 1.
     WrongMinBinBlockLen,
+    /// In current implementation first byte contains bytes count of block len in first 2 bits and need other bits set 0.
+    WrongFirstByte,
     /// Open, create or read file error.
     FileError(std::io::Error),
     /// Error of integrity.

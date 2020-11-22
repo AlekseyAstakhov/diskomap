@@ -29,9 +29,9 @@ pub enum Format {
 
     /// Binary format.
     /// Each changing map operation is recorded as data block beginning with
-    /// byte where first 2 bits is number of subsequent bytes specifying the block length,
-    /// 00b0 - 1 byte, 01b0 - 2 bytes, 10b0 - 4 bytes, 11b0 - 8 bytes.
-    /// the next 6 bits are reserved for flags.
+    /// byte where first 2 bits is number of bytes specifying the block length,
+    /// 0b00 - 1 byte, 0b01 - 2 bytes, 0b10 - 4 bytes, 0b11 - 8 bytes.
+    /// the next 6 bits are reserved for flags and need be 0 in current implementation.
     /// After the first byte, bytes of the block length follow in little endian.
     /// After block data where first byte of block data is
     /// code of operation as 'insert' or 'remove'. After operation code followed

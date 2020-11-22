@@ -7,13 +7,13 @@ use serde::Serialize;
 use crc::crc32;
 
 /// 1 byte for block length if right 2 bits of first byte of block is 0b00.
-const U8_LEN: u8 = 0;
+const U8_LEN: u8 = 0b00;
 /// 2 bytes for block length if right 2 bits of first byte of block is 0b01.
-const U16_LEN: u8 = 1;
+const U16_LEN: u8 = 0b01;
 /// 4 bytes for block length if right 2 bits of first byte of block is 0b10.
-const U32_LEN: u8 = 2;
+const U32_LEN: u8 = 0b10;
 /// 8 bytes for block length if right 2 bits of first byte of block is 0b11.
-const U64_LEN: u8 = 3;
+const U64_LEN: u8 = 0b11;
 
 /// Code of insert to map operation.
 const INSERT: u8 = 0;
@@ -208,6 +208,10 @@ pub fn read_bin_block_len<Reader>(reader: &mut Reader) -> Result<usize, LoadFile
     let mut first_byte_buf = [0];
     if reader.read(&mut first_byte_buf)? < 1 {
         return Ok(0);
+    }
+
+    if first_byte_buf[0] & 0b11111100 != 0 {
+        return Err(LoadFileError::WrongFirstByte);
     }
 
     let len_of_len = first_byte_buf[0];
